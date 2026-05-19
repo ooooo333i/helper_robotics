@@ -1,0 +1,106 @@
+<?xml version="1.0"?>
+<robot name="helper_robot" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <!-- base_link: 전륜 좌우 구동바퀴 중심 중간점 -->
+  <link name="base_link">
+    <visual>
+      <origin xyz="-0.12 0 0.08" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.40 0.30 0.12"/>
+      </geometry>
+    </visual>
+  </link>
+
+  <!-- left wheel -->
+  <link name="left_wheel">
+    <visual>
+      <origin xyz="0 0 0" rpy="1.5708 0 0"/>
+      <geometry>
+        <cylinder radius="0.05" length="0.03"/>
+      </geometry>
+    </visual>
+  </link>
+
+  <joint name="left_wheel_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="left_wheel"/>
+    <origin xyz="0 0.15 0" rpy="0 0 0"/>
+  </joint>
+
+  <!-- right wheel -->
+  <link name="right_wheel">
+    <visual>
+      <origin xyz="0 0 0" rpy="1.5708 0 0"/>
+      <geometry>
+        <cylinder radius="0.05" length="0.03"/>
+      </geometry>
+    </visual>
+  </link>
+
+  <joint name="right_wheel_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="right_wheel"/>
+    <origin xyz="0 -0.15 0" rpy="0 0 0"/>
+  </joint>
+
+  <!-- front lidar -->
+  <link name="laser_front">
+    <visual>
+      <geometry>
+        <cylinder radius="0.04" length="0.03"/>
+      </geometry>
+    </visual>
+  </link>
+
+  <joint name="laser_front_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="laser_front"/>
+    <origin xyz="0.12 0 0.18" rpy="0 0 0"/>
+  </joint>
+
+  <!-- rear lidar -->
+  <link name="laser_rear">
+    <visual>
+      <geometry>
+        <cylinder radius="0.04" length="0.03"/>
+      </geometry>
+    </visual>
+  </link>
+
+  <joint name="laser_rear_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="laser_rear"/>
+    <origin xyz="-0.25 0 0.18" rpy="0 0 3.14159"/>
+  </joint>
+
+  <!-- depth camera -->
+  <link name="depth_camera_link">
+    <visual>
+      <geometry>
+        <box size="0.06 0.03 0.03"/>
+      </geometry>
+    </visual>
+  </link>
+
+  <joint name="depth_camera_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="depth_camera_link"/>
+    <origin xyz="0.10 0 0.35" rpy="0 0 0"/>
+  </joint>
+
+  <!-- rgb webcam -->
+  <link name="rgb_camera_link">
+    <visual>
+      <geometry>
+        <box size="0.05 0.03 0.03"/>
+      </geometry>
+    </visual>
+  </link>
+
+  <joint name="rgb_camera_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="rgb_camera_link"/>
+    <origin xyz="0.10 0 0.38" rpy="0 0 0"/>
+  </joint>
+
+</robot>
