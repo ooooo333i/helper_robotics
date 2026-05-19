@@ -1,0 +1,104 @@
+# 실제 장애물 판단 로직
+
+import math
+
+import rclpy
+from rclpy.node import Node
+from sensor_msgs.msg import LaserScan
+from std_msgs.msg import Bool
+
+
+class ObstacleDetectorNode(Node):
+    """Detect whether an obstacle exists in the configured LiDAR region."""
+
+    def __init__(self):
+        super().__init__('obstacle_detector_node')
+
+        self.declare_parameter('detection_angle_min_deg', -30.0)
+        self.declare_parameter('detection_angle_max_deg', 30.0)
+        self.declare_parameter('obstacle_distance_threshold', 1.0)
+        self.declare_parameter(
+            'input_scan_topic',
+            '/perception/scan/front',
+        )
+        self.declare_parameter(
+            'output_obstacle_topic',
+            '/perception/obstacle/front',
+        )
+
+        input_scan_topic = self.get_parameter('input_scan_topic').value
+        output_obstacle_topic = self.get_parameter(
+            'output_obstacle_topic'
+        ).value
+
+        self.publisher = self.create_publisher(
+            Bool,
+            output_obstacle_topic,
+            10,
+        )
+        self.subscription = self.create_subscription(
+            LaserScan,
+            input_scan_topic,
+            self.scan_callback,
+            10,
+        )
+
+        # ROS time is used so simulation time also works correctly.
+        self.last_log_time = self.get_clock().now()
+
+    def scan_callback(self, msg):
+        angle_min_rad = math.radians(
+            self.get_parameter('detection_angle_min_deg').value
+        )
+        angle_max_rad = math.radians(
+            self.get_parameter('detection_angle_max_deg').value
+        )
+        threshold = self.get_parameter('obstacle_distance_threshold').value
+
+        valid_distances = []
+        current_angle = msg.angle_min
+
+        for distance in msg.ranges:
+            in_detection_window = (
+                angle_min_rad <= current_angle <= angle_max_rad
+            )
+
+            # Filtered scans use +inf for ignored samples, so keep finite values only.
+            if in_detection_window and math.isfinite(distance):
+                valid_distances.append(distance)
+
+            current_angle += msg.angle_increment
+
+        min_distance = min(valid_distances) if valid_distances else math.inf
+        obstacle_detected = min_distance <= threshold
+
+        result_msg = Bool()
+        result_msg.data = obstacle_detected
+        self.publisher.publish(result_msg)
+
+        now = self.get_clock().now()
+        if (now - self.last_log_time).nanoseconds >= 1_000_000_000:
+            min_distance_text = (
+                f'{min_distance:.3f} m'
+                if math.isfinite(min_distance)
+                else 'inf'
+            )
+            self.get_logger().info(
+                f'min_distance={min_distance_text}, '
+                f'obstacle_detected={obstacle_detected}'
+            )
+            self.last_log_time = now
+
+
+def main(args=None):
+    rclpy.init(args=args)
+    node = ObstacleDetectorNode()
+    try:
+        rclpy.spin(node)
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
+
+
+if __name__ == '__main__':
+    main()

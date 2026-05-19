@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>helper_perception 정리</title>
+  <style>
+    body {
+      font-family: "Noto Sans CJK KR", "Noto Sans KR", "DejaVu Sans", sans-serif;
+      color: #222;
+      line-height: 1.5;
+      margin: 36px;
+      font-size: 11pt;
+    }
+    h1, h2, h3 {
+      color: #17324d;
+      margin-bottom: 8px;
+    }
+    h1 {
+      font-size: 22pt;
+      border-bottom: 2px solid #17324d;
+      padding-bottom: 10px;
+    }
+    h2 {
+      font-size: 15pt;
+      margin-top: 26px;
+      border-left: 5px solid #2f7d8a;
+      padding-left: 10px;
+    }
+    h3 {
+      font-size: 12pt;
+      margin-top: 18px;
+    }
+    code {
+      font-family: "DejaVu Sans Mono", monospace;
+      background: #f3f5f7;
+      padding: 1px 4px;
+    }
+    pre {
+      background: #f3f5f7;
+      border: 1px solid #d8dde3;
+      padding: 10px;
+      white-space: pre-wrap;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 10px 0 16px;
+    }
+    th, td {
+      border: 1px solid #b8c1cc;
+      padding: 7px;
+      vertical-align: top;
+    }
+    th {
+      background: #eaf1f4;
+      text-align: left;
+    }
+    .note {
+      background: #eef7f7;
+      border-left: 4px solid #2f7d8a;
+      padding: 10px;
+      margin: 12px 0;
+    }
+  </style>
+</head>
+<body>
+  <h1>helper_perception 패키지 정리</h1>
+
+  <p><strong>목적:</strong> 실물 RPLIDAR C1 입력을 받아 LiDAR scan을 필터링하고, 전방/후방 장애물 여부를 Bool 토픽으로 발행하는 perception 계층 구성</p>
+
+  <h2>1. 현재 구현 범위</h2>
+  <ul>
+    <li>RPLIDAR C1 드라이버 실행 launch 구성</li>
+    <li>raw scan 토픽 remap 구성</li>
+    <li>LaserScan 필터링 노드 구현</li>
+    <li>장애물 판단 노드 구현</li>
+    <li>front/rear 공용 재사용 구조로 확장</li>
+    <li>front 단독, rear 단독, dual LiDAR 통합 launch 구성</li>
+  </ul>
+
+  <h2>2. 토픽 구조</h2>
+  <table>
+    <tr>
+      <th>구분</th>
+      <th>raw scan</th>
+      <th>filtered scan</th>
+      <th>obstacle result</th>
+    </tr>
+    <tr>
+      <td>Front</td>
+      <td><code>/perception/scan/front/raw</code></td>
+      <td><code>/perception/scan/front</code></td>
+      <td><code>/perception/obstacle/front</code></td>
+    </tr>
+    <tr>
+      <td>Rear</td>
+      <td><code>/perception/scan/rear/raw</code></td>
+      <td><code>/perception/scan/rear</code></td>
+      <td><code>/perception/obstacle/rear</code></td>
+    </tr>
+  </table>
+
+  <div class="note">
+    센서 원본 데이터에는 <code>/raw</code>를 붙이고, 필터링 후 데이터는 <code>/raw</code> 없이 사용한다.
+  </div>
+
+  <h2>3. 실행 명령어</h2>
+
+  <h3>3-1. 빌드</h3>
+  <pre>cd /home/jiming/workspace/helper_robotics
+colcon build --symlink-install
+source install/setup.bash</pre>
+
+  <h3>3-2. Front LiDAR 전체 실행</h3>
+  <pre>ros2 launch helper_perception front_lidar_perception.launch.py</pre>
+
+  <h3>3-3. Rear LiDAR 전체 실행</h3>
+  <pre>ros2 launch helper_perception rear_lidar_perception.launch.py</pre>
+
+  <h3>3-4. Front + Rear 동시 실행</h3>
+  <pre>ros2 launch helper_perception dual_lidar_perception.launch.py \
+  front_serial_port:=/dev/lidar_front \
+  rear_serial_port:=/dev/lidar_rear</pre>
+
+  <h3>3-5. 토픽 확인</h3>
+  <pre>ros2 topic echo /perception/scan/front/raw
+ros2 topic echo /perception/scan/front
+ros2 topic echo /perception/obstacle/front
+ros2 topic echo /perception/scan/rear/raw
+ros2 topic echo /perception/scan/rear
+ros2 topic echo /perception/obstacle/rear</pre>
+
+  <h3>3-6. 주파수 확인</h3>
+  <pre>ros2 topic hz /perception/scan/front/raw
+ros2 topic hz /perception/scan/rear/raw</pre>
+
+  <h2>4. 주요 파일 역할</h2>
+  <table>
+    <tr>
+      <th>파일</th>
+      <th>역할</th>
+    </tr>
+    <tr>
+      <td><code>scan_filter_node.py</code></td>
+      <td>LaserScan에서 지정 각도 범위와 거리 범위만 남기고, 나머지 값은 <code>inf</code>로 변환</td>
+    </tr>
+    <tr>
+      <td><code>obstacle_detector_node.py</code></td>
+      <td>감지 각도 범위 내 최소 거리를 계산하고 threshold 이하이면 장애물로 판단</td>
+    </tr>
+    <tr>
+      <td><code>front_lidar_c1.launch.py</code></td>
+      <td>Front C1 드라이버 실행 및 <code>scan -> /perception/scan/front/raw</code> remap</td>
+    </tr>
+    <tr>
+      <td><code>rear_lidar_c1.launch.py</code></td>
+      <td>Rear C1 드라이버 실행 및 <code>scan -> /perception/scan/rear/raw</code> remap</td>
+    </tr>
+    <tr>
+      <td><code>perception_lidar.launch.py</code></td>
+      <td>필터 노드와 장애물 판단 노드를 공용 인스턴스로 실행</td>
+    </tr>
+    <tr>
+      <td><code>front_lidar_perception.launch.py</code></td>
+      <td>Front 드라이버 + front perception 통합 실행</td>
+    </tr>
+    <tr>
+      <td><code>rear_lidar_perception.launch.py</code></td>
+      <td>Rear 드라이버 + rear perception 통합 실행</td>
+    </tr>
+    <tr>
+      <td><code>dual_lidar_perception.launch.py</code></td>
+      <td>Front + rear 전체 파이프라인 동시 실행</td>
+    </tr>
+  </table>
+
+  <h2>5. 코드 동작 요약</h2>
+
+  <h3>5-1. scan_filter_node</h3>
+  <ul>
+    <li>입력 LaserScan 메시지의 header와 메타데이터는 유지</li>
+    <li>각 포인트의 각도를 계산하여 설정한 각도 범위 안인지 확인</li>
+    <li><code>NaN</code>, <code>inf</code>, 최소 거리 미만, 최대 거리 초과 값은 무효 처리</li>
+    <li>무효 값과 사용하지 않는 각도 범위는 <code>inf</code>로 변환</li>
+  </ul>
+
+  <h3>5-2. obstacle_detector_node</h3>
+  <ul>
+    <li>필터링된 scan에서 감지 각도 범위 안의 유효 거리만 사용</li>
+    <li>그 중 최소 거리를 계산</li>
+    <li>최소 거리가 threshold 이하이면 <code>true</code>, 아니면 <code>false</code> 발행</li>
+    <li>디버그 로그는 약 1초 간격으로 출력</li>
+  </ul>
+
+  <h2>6. 주요 파라미터</h2>
+  <table>
+    <tr>
+      <th>파라미터</th>
+      <th>기본값</th>
+      <th>의미</th>
+    </tr>
+    <tr>
+      <td><code>angle_min_deg</code></td>
+      <td>-90.0</td>
+      <td>필터링에 사용할 최소 각도</td>
+    </tr>
+    <tr>
+      <td><code>angle_max_deg</code></td>
+      <td>90.0</td>
+      <td>필터링에 사용할 최대 각도</td>
+    </tr>
+    <tr>
+      <td><code>min_valid_range</code></td>
+      <td>0.15</td>
+      <td>이 값보다 가까운 측정값은 무효 처리</td>
+    </tr>
+    <tr>
+      <td><code>max_valid_range</code></td>
+      <td>8.0</td>
+      <td>이 값보다 먼 측정값은 무효 처리</td>
+    </tr>
+    <tr>
+      <td><code>detection_angle_min_deg</code></td>
+      <td>-30.0</td>
+      <td>장애물 판단 최소 각도</td>
+    </tr>
+    <tr>
+      <td><code>detection_angle_max_deg</code></td>
+      <td>30.0</td>
+      <td>장애물 판단 최대 각도</td>
+    </tr>
+    <tr>
+      <td><code>obstacle_distance_threshold</code></td>
+      <td>0.5</td>
+      <td>이 거리 이하이면 장애물로 판단</td>
+    </tr>
+  </table>
+
+  <h3>파라미터 변경 예시</h3>
+  <pre>ros2 launch helper_perception perception_lidar.launch.py \
+  obstacle_distance_threshold:=0.7 \
+  detection_angle_min_deg:=-20.0 \
+  detection_angle_max_deg:=20.0</pre>
+
+  <h2>7. 실물 검증 절차</h2>
+  <ol>
+    <li>LiDAR raw scan 수신 확인</li>
+    <li>RViz에서 raw scan과 filtered scan 비교</li>
+    <li>정면 장애물 배치 후 obstacle 토픽이 <code>true</code>로 바뀌는지 확인</li>
+    <li>장애물 제거 후 <code>false</code> 복귀 확인</li>
+    <li>감지 범위 바깥 장애물에 대해서는 false가 유지되는지 확인</li>
+  </ol>
+
+  <h3>RViz 확인 포인트</h3>
+  <ul>
+    <li><code>Fixed Frame</code>은 현재 scan frame과 맞춰야 함</li>
+    <li>현재 front 기본 frame은 <code>front_laser</code>, rear 기본 frame은 <code>rear_laser</code></li>
+    <li>최종 시스템에서는 <code>base_link -> front_laser</code>, <code>base_link -> rear_laser</code> TF 정의가 필요</li>
+  </ul>
+
+  <h2>8. 추후 수정 및 보완 필요 사항</h2>
+  <ul>
+    <li>실차 장착 후 front/rear 감지 각도 범위 재조정</li>
+    <li>실차 주행 환경 기준 거리 threshold 재조정</li>
+    <li>LiDAR 장착 위치 반영을 위한 URDF/TF 정리</li>
+    <li>Jetson 환경에서 안정적인 포트 식별을 위해 udev rule 적용 권장</li>
+    <li>rear LiDAR 실물 연결 후 실제 장착 방향 기준으로 파라미터 개별 튜닝</li>
+    <li>장애물 판단 결과를 behavior 계층과 연결</li>
+    <li>필요 시 정지/감속 등 다단계 상태로 확장</li>
+  </ul>
+
+  <h2>9. 현재 확인 완료 항목</h2>
+  <ul>
+    <li>실물 RPLIDAR C1 연결 확인</li>
+    <li>Front raw scan remap 확인</li>
+    <li>필터링 scan 발행 확인</li>
+    <li>정면 장애물 판단 로직 동작 확인</li>
+    <li>RViz에서 LiDAR scan 표시 확인</li>
+    <li>front/rear 공용 실행 구조 구성 완료</li>
+  </ul>
+
+  <h2>10. 다음 개발 단계 제안</h2>
+  <ol>
+    <li><code>helper_bringup</code> 패키지 분리 여부 결정</li>
+    <li>URDF에 front/rear LiDAR frame 반영</li>
+    <li>rear LiDAR 실물 검증</li>
+    <li>behavior node에서 <code>/perception/obstacle/front</code>, <code>/perception/obstacle/rear</code> 구독</li>
+    <li>최종적으로 제어 계층과 연결</li>
+  </ol>
+</body>
+</html>

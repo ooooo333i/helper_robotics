@@ -1,15 +1,17 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
-  <name>helper_status</name>
+  <name>helper_control</name>
   <version>0.0.0</version>
-  <description>Publishes high-level helper robot status from odometry and robot state inputs.</description>
-  <maintainer email="seojimni@gmail.com">jimingbori</maintainer>
+  <description>Control package for helper robot velocity commands and motion behavior nodes.</description>
+  <maintainer email="seojimni@gmail.com">jiming</maintainer>
   <license>TODO: License declaration</license>
 
   <depend>rclpy</depend>
-  <depend>helper_msgs</depend>
+  <depend>geometry_msgs</depend>
   <depend>nav_msgs</depend>
+  <depend>sensor_msgs</depend>
+  <depend>tf2_ros</depend>
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>

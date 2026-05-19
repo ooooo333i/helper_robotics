@@ -1,6 +1,8 @@
 from setuptools import find_packages, setup
+from glob import glob
+import os
 
-package_name = 'helper_status'
+package_name = 'helper_perception'
 
 setup(
     name=package_name,
@@ -10,12 +12,13 @@ setup(
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
+        (os.path.join('share', package_name, 'launch'), glob('launch/*.launch.py')),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
-    maintainer='jimingbori',
+    maintainer='jiming',
     maintainer_email='seojimni@gmail.com',
-    description='Publishes high-level helper robot status from odometry and robot state inputs.',
+    description='Perception package for helper robot sensor processing and obstacle detection nodes.',
     license='TODO: License declaration',
     extras_require={
         'test': [
@@ -24,7 +27,9 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'status_node = helper_status.status_node:main',
+            'distance_test = helper_perception.distance_test:main',
+            'scan_filter_node = helper_perception.scan_filter_node:main',
+            'obstacle_detector_node = helper_perception.obstacle_detector_node:main',
         ],
     },
 )

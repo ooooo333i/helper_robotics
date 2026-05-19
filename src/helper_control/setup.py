@@ -1,6 +1,6 @@
 from setuptools import find_packages, setup
 
-package_name = 'helper_status'
+package_name = 'helper_control'
 
 setup(
     name=package_name,
@@ -13,9 +13,9 @@ setup(
     ],
     install_requires=['setuptools'],
     zip_safe=True,
-    maintainer='jimingbori',
+    maintainer='jiming',
     maintainer_email='seojimni@gmail.com',
-    description='Publishes high-level helper robot status from odometry and robot state inputs.',
+    description='Control package for helper robot velocity commands and motion behavior nodes.',
     license='TODO: License declaration',
     extras_require={
         'test': [
@@ -24,7 +24,8 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'status_node = helper_status.status_node:main',
+            'fake_odom = helper_control.fake_odom_node:main',
+            'fake_scan = helper_control.fake_scan_node:main',
         ],
     },
 )
