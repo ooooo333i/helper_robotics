@@ -9,11 +9,11 @@ from launch_ros.parameter_descriptions import ParameterValue
 
 def generate_launch_description():
     return LaunchDescription([
-        DeclareLaunchArgument('front_serial_port', default_value='/dev/ttyUSB0'), # port
-        DeclareLaunchArgument('front_serial_baudrate', default_value='460800'), # 통신속도
-        DeclareLaunchArgument('front_frame_id', default_value='front_laser'), # 좌표계 기준
-        DeclareLaunchArgument('front_inverted', default_value='false'), # 반대로 장착할 경우 true
-        DeclareLaunchArgument('front_angle_compensate', default_value='true'), # 각도 보정
+        DeclareLaunchArgument('front_serial_port', default_value='/dev/lidar_front'),  # port
+        DeclareLaunchArgument('front_serial_baudrate', default_value='460800'),  # 통신속도
+        DeclareLaunchArgument('front_frame_id', default_value='laser_front'),  # 좌표계 기준
+        DeclareLaunchArgument('front_inverted', default_value='false'),  # 반대로 장착할 경우 true
+        DeclareLaunchArgument('front_angle_compensate', default_value='true'),  # 각도 보정
         DeclareLaunchArgument('front_scan_mode', default_value='Standard'),
         Node(
             package='sllidar_ros2',
@@ -40,7 +40,7 @@ def generate_launch_description():
             }],
             # The driver publishes relative topic "scan"; expose it as our raw front scan.
             remappings=[
-                ('scan', '/perception/scan/front/raw'),
+                ('scan', '/perception/lidar/front/scan_raw'),
             ],
         ),
     ])

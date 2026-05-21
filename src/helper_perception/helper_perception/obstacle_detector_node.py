@@ -1,11 +1,9 @@
-# 실제 장애물 판단 로직
-
 import math
 
 import rclpy
+from helper_msgs.msg import ObstacleDecision
 from rclpy.node import Node
 from sensor_msgs.msg import LaserScan
-from std_msgs.msg import Bool
 
 
 class ObstacleDetectorNode(Node):
@@ -32,7 +30,7 @@ class ObstacleDetectorNode(Node):
         ).value
 
         self.publisher = self.create_publisher(
-            Bool,
+            ObstacleDecision,
             output_obstacle_topic,
             10,
         )
@@ -72,8 +70,12 @@ class ObstacleDetectorNode(Node):
         min_distance = min(valid_distances) if valid_distances else math.inf
         obstacle_detected = min_distance <= threshold
 
-        result_msg = Bool()
-        result_msg.data = obstacle_detected
+        result_msg = ObstacleDecision()
+        result_msg.obstacle_type = 'lidar'
+        result_msg.decision = 'obstacle' if obstacle_detected else 'clear'
+        result_msg.distance = float(min_distance)
+        result_msg.height = 0.0
+        result_msg.is_dynamic = False
         self.publisher.publish(result_msg)
 
         now = self.get_clock().now()

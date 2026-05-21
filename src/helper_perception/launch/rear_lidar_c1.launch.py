@@ -11,7 +11,7 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument('rear_serial_port', default_value='/dev/ttyUSB1'),
         DeclareLaunchArgument('rear_serial_baudrate', default_value='460800'),
-        DeclareLaunchArgument('rear_frame_id', default_value='rear_laser'),
+        DeclareLaunchArgument('rear_frame_id', default_value='laser_rear'),
         DeclareLaunchArgument('rear_inverted', default_value='false'),
         DeclareLaunchArgument('rear_angle_compensate', default_value='true'),
         DeclareLaunchArgument('rear_scan_mode', default_value='Standard'),
@@ -39,7 +39,7 @@ def generate_launch_description():
                 'scan_mode': LaunchConfiguration('rear_scan_mode'),
             }],
             remappings=[
-                ('scan', '/perception/scan/rear/raw'),
+                ('scan', '/perception/lidar/rear/scan_raw'),
             ],
         ),
     ])

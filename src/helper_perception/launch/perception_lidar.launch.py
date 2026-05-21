@@ -16,27 +16,30 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             'obstacle_detector_node_name',
-            default_value='obstacle_detector_node',
+            default_value='lidar_obstacle_detector_node',
         ),
         DeclareLaunchArgument(
             'input_scan_topic',
-            default_value='/perception/scan/front/raw',
+            default_value='/perception/lidar/front/scan_raw',
         ),
         DeclareLaunchArgument(
             'filtered_scan_topic',
-            default_value='/perception/scan/front',
+            default_value='/perception/lidar/front/scan',
         ),
         DeclareLaunchArgument(
             'obstacle_topic',
-            default_value='/perception/obstacle/front',
+            default_value='/perception/obstacle/lidar',
         ),
-        DeclareLaunchArgument('angle_min_deg', default_value='-90.0'), # LiDAR 최소 각도 (오)
+        DeclareLaunchArgument('angle_min_deg', default_value='-90.0'),  # LiDAR 최소 각도 (오)
         DeclareLaunchArgument('angle_max_deg', default_value='90.0'),
-        DeclareLaunchArgument('min_valid_range', default_value='0.15'), # 유효 최소 거리 (m단위)
+        DeclareLaunchArgument('min_valid_range', default_value='0.15'),  # 유효 최소 거리 (m단위)
         DeclareLaunchArgument('max_valid_range', default_value='8.0'),
-        DeclareLaunchArgument('detection_angle_min_deg', default_value='-30.0'), # 실제 장애물 판단 최소 각도
+        DeclareLaunchArgument('detection_angle_min_deg', default_value='-30.0'),  # 실제 장애물 판단 최소 각도
         DeclareLaunchArgument('detection_angle_max_deg', default_value='30.0'),
-        DeclareLaunchArgument('obstacle_distance_threshold', default_value='0.5'), # 장애물로 판단할 거리 기준
+        DeclareLaunchArgument(
+            'obstacle_distance_threshold',
+            default_value='0.5',
+        ),
         Node(
             package='helper_perception',
             executable='scan_filter_node',

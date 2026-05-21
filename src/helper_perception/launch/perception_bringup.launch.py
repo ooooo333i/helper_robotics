@@ -14,7 +14,7 @@ def generate_launch_description():
                 PathJoinSubstitution([
                     helper_perception_share,
                     'launch',
-                    'rear_lidar_c1.launch.py',
+                    'front_lidar_perception.launch.py',
                 ])
             ])
         ),
@@ -23,15 +23,17 @@ def generate_launch_description():
                 PathJoinSubstitution([
                     helper_perception_share,
                     'launch',
-                    'perception_lidar.launch.py',
+                    'depth_obstacle.launch.py',
                 ])
-            ]),
-            launch_arguments={
-                'scan_filter_node_name': 'rear_scan_filter_node',
-                'obstacle_detector_node_name': 'rear_obstacle_detector_node',
-                'input_scan_topic': '/perception/lidar/rear/scan_raw',
-                'filtered_scan_topic': '/perception/lidar/rear/scan',
-                'obstacle_topic': '/perception/obstacle/rear',
-            }.items(),
+            ])
+        ),
+        IncludeLaunchDescription(
+            PythonLaunchDescriptionSource([
+                PathJoinSubstitution([
+                    helper_perception_share,
+                    'launch',
+                    'obstacle_fusion.launch.py',
+                ])
+            ])
         ),
     ])
