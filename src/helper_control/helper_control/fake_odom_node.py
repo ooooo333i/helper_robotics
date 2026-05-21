@@ -5,11 +5,12 @@ from nav_msgs.msg import Odometry
 from geometry_msgs.msg import TransformStamped
 from tf2_ros import TransformBroadcaster
 
+
 class FakeOdom(Node):
     def __init__(self):
         super().__init__('fake_odom')
 
-        self.odom_pub = self.create_publisher(Odometry, '/odom', 10)
+        self.odom_pub = self.create_publisher(Odometry, '/control/odom', 10)
         self.tf_broadcaster = TransformBroadcaster(self)
 
         self.timer = self.create_timer(0.1, self.timer_callback)

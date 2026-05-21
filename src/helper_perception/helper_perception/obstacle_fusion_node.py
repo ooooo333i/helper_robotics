@@ -11,17 +11,17 @@ class ObstacleFusionNode(Node):
     def __init__(self):
         super().__init__('obstacle_fusion_node')
 
-        self.declare_parameter('lidar_topic', '/perception/obstacle/lidar')
+        self.declare_parameter('range_topic', '/perception/obstacle/range')
         self.declare_parameter('depth_topic', '/perception/obstacle/depth')
         self.declare_parameter('output_topic', '/perception/obstacle/fused')
         self.declare_parameter('input_timeout_sec', 0.5)
-        self.declare_parameter('prefer_lidar_distance', True)
+        self.declare_parameter('prefer_range_distance', True)
         self.declare_parameter('timeout_is_obstacle', True)
         self.declare_parameter('publish_rate_hz', 10.0)
 
-        self.lidar_msg = None
+        self.range_msg = None
         self.depth_msg = None
-        self.lidar_time = None
+        self.range_time = None
         self.depth_time = None
 
         self.publisher = self.create_publisher(
@@ -29,10 +29,10 @@ class ObstacleFusionNode(Node):
             self.get_parameter('output_topic').value,
             10,
         )
-        self.lidar_sub = self.create_subscription(
+        self.range_sub = self.create_subscription(
             ObstacleDecision,
-            self.get_parameter('lidar_topic').value,
-            self.lidar_callback,
+            self.get_parameter('range_topic').value,
+            self.range_callback,
             10,
         )
         self.depth_sub = self.create_subscription(
@@ -45,9 +45,9 @@ class ObstacleFusionNode(Node):
         publish_rate_hz = self.get_parameter('publish_rate_hz').value
         self.timer = self.create_timer(1.0 / publish_rate_hz, self.publish)
 
-    def lidar_callback(self, msg):
-        self.lidar_msg = msg
-        self.lidar_time = self.get_clock().now()
+    def range_callback(self, msg):
+        self.range_msg = msg
+        self.range_time = self.get_clock().now()
 
     def depth_callback(self, msg):
         self.depth_msg = msg
@@ -55,28 +55,28 @@ class ObstacleFusionNode(Node):
 
     def publish(self):
         now = self.get_clock().now()
-        lidar_fresh = self.is_fresh(self.lidar_time, now)
+        range_fresh = self.is_fresh(self.range_time, now)
         depth_fresh = self.is_fresh(self.depth_time, now)
         timeout_is_obstacle = self.get_parameter('timeout_is_obstacle').value
 
-        if not lidar_fresh or not depth_fresh:
+        if not range_fresh or not depth_fresh:
             decision = 'obstacle' if timeout_is_obstacle else 'unknown'
-            distance = self.pick_distance(lidar_fresh, depth_fresh)
+            distance = self.pick_distance(range_fresh, depth_fresh)
         elif (
-            self.lidar_msg.decision == 'obstacle'
+            self.range_msg.decision == 'obstacle'
             or self.depth_msg.decision == 'obstacle'
         ):
             decision = 'obstacle'
-            distance = self.pick_distance(lidar_fresh, depth_fresh)
+            distance = self.pick_distance(range_fresh, depth_fresh)
         elif (
-            self.lidar_msg.decision == 'unknown'
+            self.range_msg.decision == 'unknown'
             or self.depth_msg.decision == 'unknown'
         ):
             decision = 'unknown'
-            distance = self.pick_distance(lidar_fresh, depth_fresh)
+            distance = self.pick_distance(range_fresh, depth_fresh)
         else:
             decision = 'clear'
-            distance = self.pick_distance(lidar_fresh, depth_fresh)
+            distance = self.pick_distance(range_fresh, depth_fresh)
 
         msg = ObstacleDecision()
         msg.obstacle_type = 'fused'
@@ -92,11 +92,11 @@ class ObstacleFusionNode(Node):
         timeout = self.get_parameter('input_timeout_sec').value
         return (now - stamp).nanoseconds <= int(timeout * 1_000_000_000)
 
-    def pick_distance(self, lidar_fresh, depth_fresh):
-        prefer_lidar = self.get_parameter('prefer_lidar_distance').value
-        lidar_distance = (
-            self.lidar_msg.distance
-            if lidar_fresh and self.lidar_msg is not None
+    def pick_distance(self, range_fresh, depth_fresh):
+        prefer_range = self.get_parameter('prefer_range_distance').value
+        range_distance = (
+            self.range_msg.distance
+            if range_fresh and self.range_msg is not None
             else math.inf
         )
         depth_distance = (
@@ -105,10 +105,10 @@ class ObstacleFusionNode(Node):
             else math.inf
         )
 
-        if prefer_lidar and math.isfinite(lidar_distance):
-            return lidar_distance
-        if math.isfinite(lidar_distance) or math.isfinite(depth_distance):
-            return min(lidar_distance, depth_distance)
+        if prefer_range and math.isfinite(range_distance):
+            return range_distance
+        if math.isfinite(range_distance) or math.isfinite(depth_distance):
+            return min(range_distance, depth_distance)
         return math.inf
 
 

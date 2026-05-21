@@ -20,15 +20,15 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             'input_scan_topic',
-            default_value='/perception/lidar/front/scan_raw',
+            default_value='/perception/scan/raw',
         ),
         DeclareLaunchArgument(
             'filtered_scan_topic',
-            default_value='/perception/lidar/front/scan',
+            default_value='/perception/scan/filtered',
         ),
         DeclareLaunchArgument(
             'obstacle_topic',
-            default_value='/perception/obstacle/lidar',
+            default_value='/perception/obstacle/range',
         ),
         DeclareLaunchArgument('angle_min_deg', default_value='-90.0'),  # LiDAR 최소 각도 (오)
         DeclareLaunchArgument('angle_max_deg', default_value='90.0'),

@@ -17,11 +17,11 @@ class ScanFilterNode(Node):
         self.declare_parameter('max_valid_range', 8.0)
         self.declare_parameter(
             'input_scan_topic',
-            '/perception/scan/front/raw',
+            '/perception/scan/raw',
         )
         self.declare_parameter(
             'output_scan_topic',
-            '/perception/scan/front',
+            '/perception/scan/filtered',
         )
 
         input_scan_topic = self.get_parameter('input_scan_topic').value

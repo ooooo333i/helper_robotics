@@ -7,7 +7,7 @@ def generate_launch_description():
         LogInfo(
             msg=(
                 'Start the depth camera driver separately, then publish '
-                '/camera/depth/image_rect_raw for the MVP depth pipeline.'
+                '/perception/depth/image_raw for the MVP depth pipeline.'
             )
         ),
     ])

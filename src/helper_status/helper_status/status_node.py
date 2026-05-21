@@ -11,14 +11,14 @@ class StatusNode(Node):
 
         self.sub_odom = self.create_subscription(
             Odometry,
-            '/odom',
+            '/control/odom',
             self.odom_callback,
             10
         )
 
         self.pub_status = self.create_publisher(
             RobotStatus,
-            '/robot_status',
+            '/control/status',
             10
         )
 

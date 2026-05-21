@@ -40,7 +40,7 @@ def generate_launch_description():
             }],
             # The driver publishes relative topic "scan"; expose it as our raw front scan.
             remappings=[
-                ('scan', '/perception/lidar/front/scan_raw'),
+                ('scan', '/perception/scan/raw'),
             ],
         ),
     ])

@@ -8,7 +8,11 @@ class FakeScan(Node):
     def __init__(self):
         super().__init__('fake_scan')
 
-        self.scan_pub = self.create_publisher(LaserScan, '/scan', 10)
+        self.scan_pub = self.create_publisher(
+            LaserScan,
+            '/perception/scan/filtered',
+            10,
+        )
         self.timer = self.create_timer(0.1, self.timer_callback)
 
     def timer_callback(self):

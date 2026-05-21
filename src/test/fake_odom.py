@@ -7,7 +7,7 @@ class FakeOdom(Node):
     def __init__(self):
         super().__init__('fake_odom')
 
-        self.pub = self.create_publisher(Odometry, '/odom', 10)
+        self.pub = self.create_publisher(Odometry, '/control/odom', 10)
         self.timer = self.create_timer(0.5, self.publish_odom)
 
         self.x = 0.0

@@ -1,9 +1,9 @@
 obstacle_fusion_node:
   ros__parameters:
-    lidar_topic: /perception/obstacle/lidar
+    range_topic: /perception/obstacle/range
     depth_topic: /perception/obstacle/depth
     output_topic: /perception/obstacle/fused
     input_timeout_sec: 0.5
-    prefer_lidar_distance: true
+    prefer_range_distance: true
     timeout_is_obstacle: true
     publish_rate_hz: 10.0

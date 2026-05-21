@@ -39,7 +39,7 @@ def generate_launch_description():
                 'scan_mode': LaunchConfiguration('rear_scan_mode'),
             }],
             remappings=[
-                ('scan', '/perception/lidar/rear/scan_raw'),
+                ('scan', '/perception/scan/rear/raw'),
             ],
         ),
     ])

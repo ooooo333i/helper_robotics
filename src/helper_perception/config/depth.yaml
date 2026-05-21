@@ -1,6 +1,6 @@
 depth_obstacle_detector_node:
   ros__parameters:
-    input_depth_topic: /camera/depth/image_rect_raw
+    input_depth_topic: /perception/depth/image_raw
     output_obstacle_topic: /perception/obstacle/depth
     roi_x_min_ratio: 0.35
     roi_x_max_ratio: 0.65

@@ -15,7 +15,7 @@ class DepthObstacleDetectorNode(Node):
 
         self.declare_parameter(
             'input_depth_topic',
-            '/camera/depth/image_rect_raw',
+            '/perception/depth/image_raw',
         )
         self.declare_parameter(
             'output_obstacle_topic',

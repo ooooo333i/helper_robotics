@@ -17,11 +17,11 @@ class ObstacleDetectorNode(Node):
         self.declare_parameter('obstacle_distance_threshold', 1.0)
         self.declare_parameter(
             'input_scan_topic',
-            '/perception/scan/front',
+            '/perception/scan/filtered',
         )
         self.declare_parameter(
             'output_obstacle_topic',
-            '/perception/obstacle/front',
+            '/perception/obstacle/range',
         )
 
         input_scan_topic = self.get_parameter('input_scan_topic').value
@@ -71,7 +71,7 @@ class ObstacleDetectorNode(Node):
         obstacle_detected = min_distance <= threshold
 
         result_msg = ObstacleDecision()
-        result_msg.obstacle_type = 'lidar'
+        result_msg.obstacle_type = 'range'
         result_msg.decision = 'obstacle' if obstacle_detected else 'clear'
         result_msg.distance = float(min_distance)
         result_msg.height = 0.0
