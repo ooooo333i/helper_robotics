@@ -57,8 +57,10 @@ class ObstacleDetectorNode(Node):
         current_angle = msg.angle_min
 
         for distance in msg.ranges:
-            in_detection_window = (
-                angle_min_rad <= current_angle <= angle_max_rad
+            in_detection_window = self.angle_in_window(
+                current_angle,
+                angle_min_rad,
+                angle_max_rad,
             )
 
             # Filtered scans use +inf for ignored samples, so keep finite values only.
@@ -90,6 +92,13 @@ class ObstacleDetectorNode(Node):
                 f'obstacle_detected={obstacle_detected}'
             )
             self.last_log_time = now
+
+    @staticmethod
+    def angle_in_window(angle, angle_min, angle_max):
+        if angle_min <= angle_max:
+            return angle_min <= angle <= angle_max
+
+        return angle >= angle_min or angle <= angle_max
 
 
 def main(args=None):

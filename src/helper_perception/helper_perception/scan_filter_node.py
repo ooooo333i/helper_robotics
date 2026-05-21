@@ -65,7 +65,11 @@ class ScanFilterNode(Node):
         current_angle = msg.angle_min
 
         for distance in msg.ranges:
-            in_angle_window = angle_min_rad <= current_angle <= angle_max_rad
+            in_angle_window = self.angle_in_window(
+                current_angle,
+                angle_min_rad,
+                angle_max_rad,
+            )
             valid_distance = (
                 math.isfinite(distance)
                 and min_valid_range <= distance <= max_valid_range
@@ -81,6 +85,13 @@ class ScanFilterNode(Node):
 
         filtered_msg.ranges = filtered_ranges
         self.publisher.publish(filtered_msg)
+
+    @staticmethod
+    def angle_in_window(angle, angle_min, angle_max):
+        if angle_min <= angle_max:
+            return angle_min <= angle <= angle_max
+
+        return angle >= angle_min or angle <= angle_max
 
 
 def main(args=None):
