@@ -1,3 +1,5 @@
+from glob import glob
+
 from setuptools import find_packages, setup
 
 package_name = 'helper_control'
@@ -10,6 +12,8 @@ setup(
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
+        ('share/' + package_name + '/config', glob('config/*.yaml')),
+        ('share/' + package_name + '/launch', glob('launch/*.launch.py')),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
@@ -26,6 +30,7 @@ setup(
         'console_scripts': [
             'fake_odom = helper_control.fake_odom_node:main',
             'fake_scan = helper_control.fake_scan_node:main',
+            'motor_driver = helper_control.motor_driver_node:main',
         ],
     },
 )

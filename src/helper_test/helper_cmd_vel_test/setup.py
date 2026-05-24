@@ -13,6 +13,7 @@ setup(
         ('share/' + package_name + '/launch', [
             'launch/cmd_vel_constant.launch.py',
             'launch/cmd_vel_sequence.launch.py',
+            'launch/obstacle_decision_sequence.launch.py',
         ]),
     ],
     install_requires=['setuptools'],
@@ -29,6 +30,10 @@ setup(
     entry_points={
         'console_scripts': [
             'cmd_vel_test = helper_cmd_vel_test.cmd_vel_test_node:main',
+            (
+                'obstacle_decision_test = '
+                'helper_cmd_vel_test.obstacle_decision_test_node:main'
+            ),
         ],
     },
 )
