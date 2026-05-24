@@ -2,6 +2,7 @@
 
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
+from launch.substitutions import EnvironmentVariable
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
@@ -9,7 +10,13 @@ from launch_ros.parameter_descriptions import ParameterValue
 
 def generate_launch_description():
     return LaunchDescription([
-        DeclareLaunchArgument('front_serial_port', default_value='/dev/lidar_front'),  # port
+        DeclareLaunchArgument(
+            'front_serial_port',
+            default_value=EnvironmentVariable(
+                'AMR_FRONT_LIDAR_PORT',
+                default_value='/dev/lidar_front',
+            ),
+        ),  # port
         DeclareLaunchArgument('front_serial_baudrate', default_value='460800'),  # 통신속도
         DeclareLaunchArgument('front_frame_id', default_value='laser_front'),  # 좌표계 기준
         DeclareLaunchArgument('front_inverted', default_value='false'),  # 반대로 장착할 경우 true

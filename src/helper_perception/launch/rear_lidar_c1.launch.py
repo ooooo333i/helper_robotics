@@ -2,6 +2,7 @@
 
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
+from launch.substitutions import EnvironmentVariable
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
@@ -9,7 +10,13 @@ from launch_ros.parameter_descriptions import ParameterValue
 
 def generate_launch_description():
     return LaunchDescription([
-        DeclareLaunchArgument('rear_serial_port', default_value='/dev/ttyUSB1'),
+        DeclareLaunchArgument(
+            'rear_serial_port',
+            default_value=EnvironmentVariable(
+                'AMR_REAR_LIDAR_PORT',
+                default_value='/dev/ttyUSB1',
+            ),
+        ),
         DeclareLaunchArgument('rear_serial_baudrate', default_value='460800'),
         DeclareLaunchArgument('rear_frame_id', default_value='laser_rear'),
         DeclareLaunchArgument('rear_inverted', default_value='false'),
