@@ -7,6 +7,13 @@ endif()
 
 # find dependencies
 find_package(ament_cmake REQUIRED)
+find_package(action_msgs REQUIRED)
+find_package(geometry_msgs REQUIRED)
+find_package(nav_msgs REQUIRED)
+find_package(nav2_msgs REQUIRED)
+find_package(rclpy REQUIRED)
+find_package(std_msgs REQUIRED)
+find_package(tf2_ros REQUIRED)
 # uncomment the following section in order to fill in
 # further dependencies manually.
 # find_package(<dependency> REQUIRED)
@@ -24,8 +31,20 @@ if(BUILD_TESTING)
 endif()
 
 install(
-  DIRECTORY launch config
+  DIRECTORY launch config rviz
   DESTINATION share/${PROJECT_NAME}
+)
+
+install(
+  PROGRAMS scripts/behavior_manager_node.py
+  DESTINATION lib/${PROJECT_NAME}
+  RENAME behavior_manager
+)
+
+install(
+  PROGRAMS scripts/demo_cmd_vel_odom_node.py
+  DESTINATION lib/${PROJECT_NAME}
+  RENAME demo_cmd_vel_odom
 )
 
 ament_package()
