@@ -28,6 +28,7 @@ setup(
     entry_points={
         'console_scripts': [
             'vda5050_adapter = helper_vda5050.vda5050_adapter_node:main',
+            'vda5050_demo_panel = helper_vda5050.vda5050_demo_panel_node:main',
         ],
     },
 )
