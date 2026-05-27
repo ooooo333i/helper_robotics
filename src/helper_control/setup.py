@@ -30,6 +30,7 @@ setup(
         'console_scripts': [
             'fake_odom = helper_control.fake_odom_node:main',
             'fake_scan = helper_control.fake_scan_node:main',
+            'cmd_vel_safety_gate = helper_control.cmd_vel_safety_gate_node:main',
             'motor_driver = helper_control.motor_driver_node:main',
         ],
     },

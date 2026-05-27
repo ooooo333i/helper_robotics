@@ -3,7 +3,6 @@
 import rclpy
 from action_msgs.msg import GoalStatus
 from geometry_msgs.msg import PoseStamped
-from geometry_msgs.msg import Twist
 from nav2_msgs.action import NavigateToPose
 from nav2_msgs.msg import SpeedLimit
 from nav2_msgs.srv import ClearEntireCostmap
@@ -20,9 +19,9 @@ class BehaviorManagerNode(Node):
     def __init__(self):
         super().__init__('behavior_manager_node')
 
-        self.declare_parameter('behavior_topic', '/behavior/state')
-        self.declare_parameter('goal_topic', '/goal_pose')
-        self.declare_parameter('stop_cmd_topic', '/control/cmd_vel_smoothed')
+        self.declare_parameter('behavior_cmd_topic', '/planning/behavior_cmd')
+        self.declare_parameter('behavior_state_topic', '/planning/behavior_state')
+        self.declare_parameter('goal_topic', '/planning/goal_pose')
         self.declare_parameter('speed_limit_topic', '/speed_limit')
         self.declare_parameter('navigate_action', 'navigate_to_pose')
         self.declare_parameter(
@@ -34,7 +33,7 @@ class BehaviorManagerNode(Node):
             '/global_costmap/clear_entirely_global_costmap',
         )
         self.declare_parameter('overcome_speed_limit', 0.08)
-        self.declare_parameter('stop_publish_count', 5)
+        self.declare_parameter('behavior_publish_rate_hz', 2.0)
 
         self.behavior = 'run'
         self.current_goal = None
@@ -44,9 +43,9 @@ class BehaviorManagerNode(Node):
         self.paused_by_behavior = False
         self.clear_in_progress = False
 
-        behavior_topic = self.get_parameter('behavior_topic').value
+        behavior_cmd_topic = self.get_parameter('behavior_cmd_topic').value
+        behavior_state_topic = self.get_parameter('behavior_state_topic').value
         goal_topic = self.get_parameter('goal_topic').value
-        stop_cmd_topic = self.get_parameter('stop_cmd_topic').value
         speed_limit_topic = self.get_parameter('speed_limit_topic').value
         navigate_action = self.get_parameter('navigate_action').value
 
@@ -66,7 +65,7 @@ class BehaviorManagerNode(Node):
 
         self.create_subscription(
             String,
-            behavior_topic,
+            behavior_cmd_topic,
             self.behavior_callback,
             10,
         )
@@ -76,15 +75,23 @@ class BehaviorManagerNode(Node):
             self.goal_callback,
             10,
         )
-        self.stop_pub = self.create_publisher(Twist, stop_cmd_topic, 10)
+        self.behavior_pub = self.create_publisher(String, behavior_state_topic, 10)
         self.speed_limit_pub = self.create_publisher(
             SpeedLimit,
             speed_limit_topic,
             10,
         )
         self.create_timer(1.0, self.retry_pending_goal)
+        behavior_rate = float(
+            self.get_parameter('behavior_publish_rate_hz').value
+        )
+        self.create_timer(
+            1.0 / max(behavior_rate, 0.1),
+            self.publish_current_behavior_state,
+        )
 
-        self.get_logger().info(f'behavior topic: {behavior_topic}')
+        self.get_logger().info(f'behavior cmd topic: {behavior_cmd_topic}')
+        self.get_logger().info(f'behavior state topic: {behavior_state_topic}')
         self.get_logger().info(f'goal topic: {goal_topic}')
         self.get_logger().info(f'Nav2 action: {navigate_action}')
 
@@ -99,6 +106,7 @@ class BehaviorManagerNode(Node):
         previous = self.behavior
         self.behavior = behavior
         self.get_logger().info(f'behavior: {previous} -> {behavior}')
+        self.publish_behavior_state(behavior)
 
         if behavior == 'run':
             self.clear_speed_limit()
@@ -123,7 +131,7 @@ class BehaviorManagerNode(Node):
         )
 
         if self.behavior == 'stop':
-            self.get_logger().info('goal stored while stopped')
+            self.get_logger().info('goal stored while stopped; waiting for run')
             return
 
         self.send_goal(msg)
@@ -167,7 +175,7 @@ class BehaviorManagerNode(Node):
 
     def stop_navigation(self):
         self.paused_by_behavior = True
-        self.publish_stop()
+        self.goal_pending = False
         if self.goal_handle is None or not self.navigation_active:
             return
 
@@ -181,13 +189,14 @@ class BehaviorManagerNode(Node):
             self.get_logger().info('Nav2 cancel requested')
         else:
             self.get_logger().warn('Nav2 cancel request did not cancel a goal')
-        self.publish_stop()
 
-    def publish_stop(self):
-        count = int(self.get_parameter('stop_publish_count').value)
-        stop = Twist()
-        for _ in range(max(count, 1)):
-            self.stop_pub.publish(stop)
+    def publish_behavior_state(self, behavior):
+        msg = String()
+        msg.data = behavior
+        self.behavior_pub.publish(msg)
+
+    def publish_current_behavior_state(self):
+        self.publish_behavior_state(self.behavior)
 
     def resume_current_goal(self):
         if self.current_goal is None:
@@ -214,7 +223,6 @@ class BehaviorManagerNode(Node):
 
     def restart_after_cancel_callback(self, future):
         self.navigation_active = False
-        self.publish_stop()
         if self.behavior != 'stop':
             self.send_goal(self.current_goal)
 

@@ -16,7 +16,7 @@ class DemoCmdVelOdomNode(Node):
     def __init__(self):
         super().__init__('demo_cmd_vel_odom_node')
 
-        self.declare_parameter('cmd_vel_topic', '/control/cmd_vel_smoothed')
+        self.declare_parameter('cmd_vel_topic', '/control/cmd_vel_safe')
         self.declare_parameter('odom_topic', '/control/odom')
         self.declare_parameter('odom_frame', 'odom')
         self.declare_parameter('base_frame', 'base_link')

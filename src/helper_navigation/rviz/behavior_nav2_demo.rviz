@@ -55,7 +55,7 @@ Visualization Manager:
         Value: /initialpose
     - Class: rviz_default_plugins/SetGoal
       Topic:
-        Value: /goal_pose
+        Value: /planning/goal_pose
   Views:
     Current:
       Class: rviz_default_plugins/Orbit

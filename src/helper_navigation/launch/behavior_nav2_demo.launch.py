@@ -1,3 +1,14 @@
+'''
+실제 로봇 없이 RViz에서 behavior -> Nav2 -> cmd_vel 흐름 확인용
+
+RViz에서 goal 찍기
+-> behavior_manager가 goal을 Nav2로 전달
+-> Nav2가 속도 생성
+-> safety gate가 stop 여부 확인
+-> fake odom이 로봇 움직임처럼 TF/odom 생성 
+-> RViz에서 움직이는 것 확인
+'''
+
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.actions import GroupAction
@@ -40,7 +51,7 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument(
             'rviz',
-            default_value='false',
+            default_value='true',
             description='Start RViz for visual inspection.',
         ),
         Node(
@@ -54,11 +65,25 @@ def generate_launch_description():
             }],
         ),
         Node(
+            package='helper_control',
+            executable='cmd_vel_safety_gate',
+            name='cmd_vel_safety_gate_node',
+            output='screen',
+            parameters=[{
+                'input_cmd_vel_topic': '/control/cmd_vel_smoothed',
+                'output_cmd_vel_topic': '/control/cmd_vel_safe',
+                'behavior_topic': '/planning/behavior_state',
+            }],
+        ),
+
+        # 실제 모터 연동했을 때는 /control/odom 받아오게 수정하면 돼
+        Node(
             package='helper_navigation',
             executable='demo_cmd_vel_odom',
             name='demo_cmd_vel_odom_node',
             output='screen',
         ),
+        # /perception/scan/filtered 같은 실제 scan 값 publish
         Node(
             package='helper_control',
             executable='fake_scan',
@@ -88,6 +113,9 @@ def generate_launch_description():
                 name='behavior_manager_node',
                 output='screen',
                 parameters=[{
+                    'behavior_cmd_topic': '/planning/behavior_cmd',
+                    'behavior_state_topic': '/planning/behavior_state',
+                    'goal_topic': '/planning/goal_pose',
                     'navigate_action': 'navigate_to_pose',
                     'clear_local_costmap_service': (
                         '/local_costmap/clear_entirely_local_costmap'
