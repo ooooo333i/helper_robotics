@@ -20,7 +20,7 @@ setup(
     zip_safe=True,
     maintainer='jiming',
     maintainer_email='seojimni@gmail.com',
-    description='Test publisher for /control/cmd_vel motor bring-up.',
+    description='Test publisher for /control/cmd_vel_safe motor bring-up.',
     license='TODO: License declaration',
     extras_require={
         'test': [
@@ -38,6 +38,7 @@ setup(
                 'cmd_vel_turn_test = '
                 'helper_cmd_vel_test.cmd_vel_turn_test_node:main'
             ),
+            'cmd_vel_stop = helper_cmd_vel_test.cmd_vel_stop_node:main',
             (
                 'obstacle_decision_test = '
                 'helper_cmd_vel_test.obstacle_decision_test_node:main'

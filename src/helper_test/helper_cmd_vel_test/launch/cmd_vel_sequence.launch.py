@@ -9,7 +9,7 @@ def generate_launch_description():
             executable='cmd_vel_test',
             name='cmd_vel_test',
             parameters=[{
-                'topic': '/control/cmd_vel',
+                'topic': '/control/cmd_vel_safe',
                 'mode': 'sequence',
                 'publish_rate': 10.0,
                 'linear_x': 0.1,

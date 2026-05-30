@@ -1,10 +1,14 @@
 motor_driver_node:
   ros__parameters:
-    cmd_vel_topic: /control/cmd_vel_smoothed
+    cmd_vel_topic: /control/cmd_vel_safe
     odom_topic: /control/odom
     obstacle_topic: /perception/obstacle/fused
+    obstacle_topics:
+      - /perception/obstacle/fused
+      - /perception/obstacle/range
+      - /perception/obstacle/depth
 
-    serial_port: /dev/ttyUSB0
+    serial_port: /dev/serial/by-id/usb-FTDI_FT232R_USB_UART_A50285BI-if00-port0
     baud_rate: 57600
     driver_id: 1
 
@@ -18,13 +22,18 @@ motor_driver_node:
     control_rate: 20.0
     odom_publish_rate: 20.0
     cmd_timeout: 0.5
+    com_watch_delay: 5
+    use_cmd_brake_on_stop: true
     publish_tf: true
 
+    left_forward_sign: -1
+    right_forward_sign: 1
+    swap_motors: false
     invert_left_motor: false
     invert_right_motor: false
 
     dry_run: false
     safety_stop_enabled: true
-    stop_on_unknown: true
+    stop_on_unknown: false
     obstacle_timeout: 1.0
     dry_run_log_period: 1.0

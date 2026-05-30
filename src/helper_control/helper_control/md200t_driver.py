@@ -17,12 +17,15 @@ class MD200TDriver:
         baudrate=57600,
         robot_id=1,
         max_rpm=4000,
+        com_watch_delay=10,
     ):
         self.port = port
         self.baudrate = baudrate
         self.robot_id = robot_id
         self.max_rpm = max_rpm
+        self.com_watch_delay = com_watch_delay
         self.serial_port = None
+        self.last_error = ''
         self.lock = threading.Lock()
 
         self.RMID = 183
@@ -30,10 +33,14 @@ class MD200TDriver:
         self.PID_PNT_VEL_CMD = 207
         self.PID_TQ_OFF = 5
         self.PID_MAIN_BC = 124
+        self.PID_COM_WATCH_DELAY = 185
+        self.PID_COMMAND = 10
+        self.CMD_BRAKE = 4
 
     def connect(self):
         if serial is None:
-            print('[ERROR] pyserial is not installed. Install python3-serial.')
+            self.last_error = 'pyserial is not installed. Install python3-serial.'
+            print(f'[ERROR] {self.last_error}', flush=True)
             return False
 
         try:
@@ -45,9 +52,14 @@ class MD200TDriver:
                 stopbits=serial.STOPBITS_ONE,
                 timeout=0.1,
             )
+            self.last_error = ''
             return self.serial_port.is_open
         except Exception as exc:
-            print(f'[ERROR] MD200T connection failed: {exc}')
+            self.last_error = str(exc)
+            print(
+                f'[ERROR] MD200T connection failed on {self.port}: {exc}',
+                flush=True,
+            )
             return False
 
     def _calculate_checksum(self, packet_bytes):
@@ -86,8 +98,17 @@ class MD200TDriver:
 
         self.send_param(81, 0, 1)
         self.send_param(92, 0, 1)
+        self.send_param(self.PID_COM_WATCH_DELAY, self.com_watch_delay, 2)
         self.send_param(self.PID_MAIN_BC, 1, 1)
         return True
+
+    def brake_motor(self):
+        if not self.serial_port or not self.serial_port.is_open:
+            return False
+
+        self.send_rpm_command(0, 0)
+        time.sleep(0.05)
+        return self.send_param(self.PID_COMMAND, self.CMD_BRAKE, 1)
 
     def send_rpm_command(self, left_rpm, right_rpm):
         if not self.serial_port or not self.serial_port.is_open:

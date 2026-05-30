@@ -4,7 +4,8 @@ import numpy as np
 import rclpy
 from helper_msgs.msg import ObstacleDecision
 from rclpy.node import Node
-from sensor_msgs.msg import Image
+from sensor_msgs.msg import CameraInfo, Image
+from std_msgs.msg import String
 
 
 class DepthObstacleDetectorNode(Node):
@@ -16,6 +17,10 @@ class DepthObstacleDetectorNode(Node):
         self.declare_parameter(
             'input_depth_topic',
             '/perception/depth/image_raw',
+        )
+        self.declare_parameter(
+            'input_camera_info_topic',
+            '/perception/depth/camera_info',
         )
         self.declare_parameter(
             'output_obstacle_topic',
@@ -30,15 +35,28 @@ class DepthObstacleDetectorNode(Node):
         self.declare_parameter('max_valid_depth', 3.0)
         self.declare_parameter('depth_unit_scale', 0.001)
         self.declare_parameter('distance_percentile', 10.0)
+        self.declare_parameter('camera_height_m', 0.27)
+        self.declare_parameter('camera_pitch_deg', 45.0)
+        self.declare_parameter('height_depth_window_m', 0.08)
+        self.declare_parameter('debug_topic', '/perception/obstacle/depth_debug')
 
         input_depth_topic = self.get_parameter('input_depth_topic').value
+        input_camera_info_topic = self.get_parameter(
+            'input_camera_info_topic'
+        ).value
         output_obstacle_topic = self.get_parameter(
             'output_obstacle_topic'
         ).value
 
+        self.camera_info = None
         self.publisher = self.create_publisher(
             ObstacleDecision,
             output_obstacle_topic,
+            10,
+        )
+        self.debug_publisher = self.create_publisher(
+            String,
+            self.get_parameter('debug_topic').value,
             10,
         )
         self.subscription = self.create_subscription(
@@ -47,12 +65,21 @@ class DepthObstacleDetectorNode(Node):
             self.depth_callback,
             10,
         )
+        self.camera_info_subscription = self.create_subscription(
+            CameraInfo,
+            input_camera_info_topic,
+            self.camera_info_callback,
+            10,
+        )
         self.last_log_time = self.get_clock().now()
+
+    def camera_info_callback(self, msg):
+        self.camera_info = msg
 
     def depth_callback(self, msg):
         depth = self.image_to_depth_meters(msg)
         if depth is None:
-            self.publish_decision('unknown', math.inf)
+            self.publish_decision('unknown', math.inf, 0.0)
             return
 
         roi = self.crop_roi(depth)
@@ -62,17 +89,45 @@ class DepthObstacleDetectorNode(Node):
         valid = valid[(valid >= min_valid_depth) & (valid <= max_valid_depth)]
 
         if valid.size == 0:
+            raw_depth = math.inf
             distance = math.inf
             decision = 'unknown'
+            height = 0.0
+            debug = self.make_debug_text(
+                decision,
+                raw_depth,
+                distance,
+                height,
+                valid.size,
+                None,
+            )
         else:
             percentile = self.get_parameter('distance_percentile').value
             percentile = min(100.0, max(0.0, percentile))
-            distance = float(np.percentile(valid, percentile))
+            raw_depth = float(np.percentile(valid, percentile))
+            height, ground_distance = self.estimate_obstacle_geometry(
+                depth,
+                raw_depth,
+            )
+            distance = (
+                ground_distance
+                if math.isfinite(ground_distance)
+                else raw_depth
+            )
             threshold = self.get_parameter('obstacle_distance_threshold').value
             decision = 'obstacle' if distance <= threshold else 'clear'
+            debug = self.make_debug_text(
+                decision,
+                raw_depth,
+                distance,
+                height,
+                valid.size,
+                valid,
+            )
 
-        self.publish_decision(decision, distance)
-        self.log_status(decision, distance)
+        self.publish_decision(decision, distance, height)
+        self.publish_debug(debug)
+        self.log_status(decision, distance, height, debug)
 
     def image_to_depth_meters(self, msg):
         encoding = msg.encoding.upper()
@@ -101,6 +156,10 @@ class DepthObstacleDetectorNode(Node):
 
     def crop_roi(self, depth):
         height, width = depth.shape
+        x_min, x_max, y_min, y_max = self.get_roi_bounds(width, height)
+        return depth[y_min:y_max, x_min:x_max]
+
+    def get_roi_bounds(self, width, height):
         x_min_ratio = self.get_parameter('roi_x_min_ratio').value
         x_max_ratio = self.get_parameter('roi_x_max_ratio').value
         y_min_ratio = self.get_parameter('roi_y_min_ratio').value
@@ -116,18 +175,106 @@ class DepthObstacleDetectorNode(Node):
         if y_max <= y_min:
             y_min, y_max = 0, height
 
-        return depth[y_min:y_max, x_min:x_max]
+        return x_min, x_max, y_min, y_max
 
-    def publish_decision(self, decision, distance):
+    def estimate_obstacle_geometry(self, depth, distance):
+        if self.camera_info is None or not math.isfinite(distance):
+            return 0.0, math.inf
+
+        fx = float(self.camera_info.k[0])
+        fy = float(self.camera_info.k[4])
+        cx = float(self.camera_info.k[2])
+        cy = float(self.camera_info.k[5])
+        if fx == 0.0 or fy == 0.0:
+            return 0.0, math.inf
+
+        image_height, image_width = depth.shape
+        x_min, x_max, y_min, y_max = self.get_roi_bounds(
+            image_width,
+            image_height,
+        )
+        roi = depth[y_min:y_max, x_min:x_max]
+        min_valid_depth = self.get_parameter('min_valid_depth').value
+        max_valid_depth = self.get_parameter('max_valid_depth').value
+        depth_window = self.get_parameter('height_depth_window_m').value
+
+        valid = np.isfinite(roi)
+        valid &= roi >= min_valid_depth
+        valid &= roi <= max_valid_depth
+        valid &= roi <= distance + depth_window
+        if not np.any(valid):
+            return 0.0, math.inf
+
+        ys, xs = np.nonzero(valid)
+        z = roi[ys, xs].astype(np.float32)
+        pixel_y = ys.astype(np.float32) + float(y_min)
+        camera_y_down = (pixel_y - cy) * z / fy
+
+        camera_height = self.get_parameter('camera_height_m').value
+        pitch = math.radians(self.get_parameter('camera_pitch_deg').value)
+        vertical_down = z * math.sin(pitch) + camera_y_down * math.cos(pitch)
+        ground_forward = z * math.cos(pitch) - camera_y_down * math.sin(pitch)
+        height_above_floor = float(camera_height) - vertical_down
+
+        ground_forward = ground_forward[np.isfinite(ground_forward)]
+        ground_forward = ground_forward[ground_forward > 0.0]
+        ground_distance = (
+            float(np.percentile(ground_forward, 10.0))
+            if ground_forward.size > 0
+            else math.inf
+        )
+
+        height_above_floor = height_above_floor[np.isfinite(height_above_floor)]
+        height_above_floor = height_above_floor[height_above_floor > 0.0]
+        if height_above_floor.size == 0:
+            return 0.0, ground_distance
+
+        return float(np.percentile(height_above_floor, 95.0)), ground_distance
+
+    def make_debug_text(
+        self,
+        decision,
+        raw_depth,
+        distance,
+        height,
+        valid_count,
+        valid_depths,
+    ):
+        parts = [
+            f'decision={decision}',
+            f'distance_m={self.format_float(distance)}',
+            f'raw_depth_m={self.format_float(raw_depth)}',
+            f'height_m={self.format_float(height)}',
+            f'valid_roi_pixels={valid_count}',
+            f'camera_height_m={self.get_parameter("camera_height_m").value:.3f}',
+            f'camera_pitch_deg={self.get_parameter("camera_pitch_deg").value:.1f}',
+        ]
+        if valid_depths is not None and valid_depths.size > 0:
+            parts.extend([
+                f'roi_min_m={float(np.min(valid_depths)):.3f}',
+                f'roi_p10_m={float(np.percentile(valid_depths, 10.0)):.3f}',
+                f'roi_median_m={float(np.median(valid_depths)):.3f}',
+            ])
+        return ', '.join(parts)
+
+    def format_float(self, value):
+        return f'{value:.3f}' if math.isfinite(value) else 'inf'
+
+    def publish_decision(self, decision, distance, height):
         msg = ObstacleDecision()
         msg.obstacle_type = 'depth'
         msg.decision = decision
         msg.distance = float(distance)
-        msg.height = 0.0
+        msg.height = float(height)
         msg.is_dynamic = False
         self.publisher.publish(msg)
 
-    def log_status(self, decision, distance):
+    def publish_debug(self, debug):
+        msg = String()
+        msg.data = debug
+        self.debug_publisher.publish(msg)
+
+    def log_status(self, decision, distance, height, debug):
         now = self.get_clock().now()
         if (now - self.last_log_time).nanoseconds < 1_000_000_000:
             return
@@ -135,8 +282,10 @@ class DepthObstacleDetectorNode(Node):
         distance_text = (
             f'{distance:.3f} m' if math.isfinite(distance) else 'inf'
         )
+        height_text = f'{height:.3f} m'
         self.get_logger().info(
-            f'depth_roi_distance={distance_text}, decision={decision}'
+            f'depth_distance={distance_text}, height={height_text}, '
+            f'decision={decision}, debug=({debug})'
         )
         self.last_log_time = now
 
@@ -146,9 +295,12 @@ def main(args=None):
     node = DepthObstacleDetectorNode()
     try:
         rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass
     finally:
         node.destroy_node()
-        rclpy.shutdown()
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
 if __name__ == '__main__':

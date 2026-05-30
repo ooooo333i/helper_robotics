@@ -10,7 +10,7 @@ def generate_launch_description():
             name='motor_driver_node',
             output='screen',
             parameters=[{
-                'cmd_vel_topic': '/control/cmd_vel',
+                'cmd_vel_topic': '/control/cmd_vel_safe',
                 'obstacle_topic': '/perception/obstacle/fused',
                 'dry_run': True,
                 'safety_stop_enabled': True,
@@ -26,7 +26,7 @@ def generate_launch_description():
             name='cmd_vel_test',
             output='screen',
             parameters=[{
-                'topic': '/control/cmd_vel',
+                'topic': '/control/cmd_vel_safe',
                 'mode': 'constant',
                 'publish_rate': 10.0,
                 'linear_x': 0.1,

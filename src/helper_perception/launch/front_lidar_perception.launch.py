@@ -32,6 +32,10 @@ def generate_launch_description():
                 'input_scan_topic': '/perception/scan/raw',
                 'filtered_scan_topic': '/perception/scan/filtered',
                 'obstacle_topic': '/perception/obstacle/range',
+                'angle_min_deg': '90.0',
+                'angle_max_deg': '-90.0',
+                'detection_angle_min_deg': '150.0',
+                'detection_angle_max_deg': '-150.0',
             }.items(),
         ),
     ])

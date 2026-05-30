@@ -5,5 +5,5 @@ obstacle_fusion_node:
     output_topic: /perception/obstacle/fused
     input_timeout_sec: 0.5
     prefer_range_distance: true
-    timeout_is_obstacle: true
+    timeout_is_obstacle: false
     publish_rate_hz: 10.0

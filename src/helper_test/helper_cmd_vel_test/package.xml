@@ -3,7 +3,7 @@
 <package format="3">
   <name>helper_cmd_vel_test</name>
   <version>0.0.0</version>
-  <description>Test publisher for /control/cmd_vel motor bring-up.</description>
+  <description>Test publisher for /control/cmd_vel_safe motor bring-up.</description>
   <maintainer email="seojimni@gmail.com">jiming</maintainer>
   <license>TODO: License declaration</license>
 

@@ -58,20 +58,20 @@ class ObstacleFusionNode(Node):
         range_fresh = self.is_fresh(self.range_time, now)
         depth_fresh = self.is_fresh(self.depth_time, now)
         timeout_is_obstacle = self.get_parameter('timeout_is_obstacle').value
+        fresh_msgs = []
 
-        if not range_fresh or not depth_fresh:
+        if range_fresh and self.range_msg is not None:
+            fresh_msgs.append(self.range_msg)
+        if depth_fresh and self.depth_msg is not None:
+            fresh_msgs.append(self.depth_msg)
+
+        if not fresh_msgs:
             decision = 'obstacle' if timeout_is_obstacle else 'unknown'
             distance = self.pick_distance(range_fresh, depth_fresh)
-        elif (
-            self.range_msg.decision == 'obstacle'
-            or self.depth_msg.decision == 'obstacle'
-        ):
+        elif any(msg.decision == 'obstacle' for msg in fresh_msgs):
             decision = 'obstacle'
             distance = self.pick_distance(range_fresh, depth_fresh)
-        elif (
-            self.range_msg.decision == 'unknown'
-            or self.depth_msg.decision == 'unknown'
-        ):
+        elif any(msg.decision == 'unknown' for msg in fresh_msgs):
             decision = 'unknown'
             distance = self.pick_distance(range_fresh, depth_fresh)
         else:

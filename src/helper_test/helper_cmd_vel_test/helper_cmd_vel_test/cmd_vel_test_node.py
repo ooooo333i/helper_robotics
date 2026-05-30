@@ -7,7 +7,7 @@ class CmdVelTest(Node):
     def __init__(self):
         super().__init__('cmd_vel_test')
 
-        self.declare_parameter('topic', '/control/cmd_vel')
+        self.declare_parameter('topic', '/control/cmd_vel_safe')
         self.declare_parameter('mode', 'constant')
         self.declare_parameter('publish_rate', 10.0)
         self.declare_parameter('linear_x', 0.0)

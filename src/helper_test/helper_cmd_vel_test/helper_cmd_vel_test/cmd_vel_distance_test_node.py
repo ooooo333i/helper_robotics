@@ -7,7 +7,7 @@ class CmdVelDistanceTest(Node):
     def __init__(self):
         super().__init__('cmd_vel_distance_test')
 
-        self.declare_parameter('topic', '/control/cmd_vel')
+        self.declare_parameter('topic', '/control/cmd_vel_safe')
         self.declare_parameter('publish_rate', 20.0)
         self.declare_parameter('distance', 0.5)
         self.declare_parameter('linear_x', 0.1)

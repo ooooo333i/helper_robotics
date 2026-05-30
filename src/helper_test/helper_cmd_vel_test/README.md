@@ -1,6 +1,6 @@
 # helper_cmd_vel_test
 
-`/control/cmd_vel` 모터 수신 테스트용 ROS2 패키지입니다.
+`/control/cmd_vel_safe` 모터 수신 테스트용 ROS2 패키지입니다.
 
 ## Build
 
@@ -20,7 +20,7 @@ ros2 run helper_cmd_vel_test cmd_vel_test
 다른 터미널에서 확인합니다.
 
 ```bash
-ros2 topic echo /control/cmd_vel
+ros2 topic echo /control/cmd_vel_safe
 ```
 
 ## 전진 테스트
@@ -51,8 +51,14 @@ ros2 run helper_cmd_vel_test cmd_vel_test --ros-args \
 ## 목표 각도 회전 테스트
 
 `cmd_vel_turn_test`는 `target_yaw_deg / angular_z`로 시간을 계산해
-`/control/cmd_vel`에 회전 명령을 보낸 뒤 정지하고 종료합니다. encoder나 odom을
+`/control/cmd_vel_safe`에 회전 명령을 보낸 뒤 정지하고 종료합니다. encoder나 odom을
 보는 closed-loop 제어가 아니라 모터 튜닝용 open-loop 테스트입니다.
+
+## 즉시 정지 명령
+
+```bash
+ros2 run helper_cmd_vel_test cmd_vel_stop
+```
 
 제자리 90도 좌회전:
 
@@ -102,7 +108,7 @@ ros2 launch helper_cmd_vel_test cmd_vel_sequence.launch.py
 
 ## Parameters
 
-- `topic`: publish topic, default `/control/cmd_vel`
+- `topic`: publish topic, default `/control/cmd_vel_safe`
 - `mode`: `constant` 또는 `sequence`, default `constant`
 - `publish_rate`: publish 주기 Hz, default `10.0`
 - `linear_x`: 전진 속도 m/s, default `0.0`
@@ -113,6 +119,10 @@ ros2 launch helper_cmd_vel_test cmd_vel_sequence.launch.py
 
 - `distance`: open-loop 전진 거리 m, default `0.5`
 - `stop_publish_count`: 종료 전 정지 명령 publish 횟수, default `10`
+
+`cmd_vel_stop` 추가 파라미터:
+
+- `stop_publish_count`: 정지 명령 publish 횟수, default `20`
 
 `cmd_vel_turn_test` 추가 파라미터:
 
