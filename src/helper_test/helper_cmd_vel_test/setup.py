@@ -31,6 +31,14 @@ setup(
         'console_scripts': [
             'cmd_vel_test = helper_cmd_vel_test.cmd_vel_test_node:main',
             (
+                'cmd_vel_distance_test = '
+                'helper_cmd_vel_test.cmd_vel_distance_test_node:main'
+            ),
+            (
+                'cmd_vel_turn_test = '
+                'helper_cmd_vel_test.cmd_vel_turn_test_node:main'
+            ),
+            (
                 'obstacle_decision_test = '
                 'helper_cmd_vel_test.obstacle_decision_test_node:main'
             ),
