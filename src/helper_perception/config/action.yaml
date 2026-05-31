@@ -1,0 +1,27 @@
+obstacle_action_node:
+  ros__parameters:
+
+    # ── 입력 / 출력 토픽 ─────────────────────────────────────────────
+    lidar_topic:  /perception/obstacle/range
+    depth_topic:  /perception/obstacle/depth
+    output_topic: /perception/obstacle/action
+
+    # ── 라이다 임계값 ────────────────────────────────────────────────
+    # 장애물까지 거리가 stop 이하이면 정지, turn 이하이면 선회
+    lidar_stop_distance_m: 0.40   # [m]  정지 거리
+    lidar_turn_distance_m: 0.80   # [m]  선회 거리
+
+    # ── 뎁스카메라 임계값 ────────────────────────────────────────────
+    depth_stop_distance_m: 0.50   # [m]  정지 거리
+    depth_turn_distance_m: 1.00   # [m]  선회 거리
+
+    # 이 범위 안에 있는 높이의 장애물만 유효하게 인식
+    depth_min_height_m: 0.05      # [m]  바닥 노이즈 제거 (이 높이 미만은 무시)
+    depth_max_height_m: 0.60      # [m]  로봇 위로 통과하는 구조물 제거 (이 높이 초과는 무시)
+
+    # ── 타임아웃 ─────────────────────────────────────────────────────
+    input_timeout_sec: 0.5        # [s]  이 시간 내 메시지 없으면 stale 처리
+    timeout_action: "stop"        # stale 시 출력 액션 ("stop" 또는 "go")
+
+    # ── 발행 주기 ────────────────────────────────────────────────────
+    publish_rate_hz: 10.0

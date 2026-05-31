@@ -35,6 +35,7 @@ setup(
             'obstacle_detector_node = helper_perception.obstacle_detector_node:main',
             'depth_obstacle_detector_node = helper_perception.depth_obstacle_detector_node:main',
             'obstacle_fusion_node = helper_perception.obstacle_fusion_node:main',
+            'obstacle_action_node = helper_perception.obstacle_action_node:main',
         ],
     },
 )

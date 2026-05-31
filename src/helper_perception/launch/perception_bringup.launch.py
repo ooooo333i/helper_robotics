@@ -36,4 +36,13 @@ def generate_launch_description():
                 ])
             ])
         ),
+        IncludeLaunchDescription(
+            PythonLaunchDescriptionSource([
+                PathJoinSubstitution([
+                    helper_perception_share,
+                    'launch',
+                    'depth_to_scan.launch.py',
+                ])
+            ])
+        ),
     ])
