@@ -34,6 +34,11 @@ def generate_launch_description():
         'config',
         'helper_nav2_params.yaml',
     ])
+    slam_params_file = PathJoinSubstitution([
+        FindPackageShare('helper_navigation'),
+        'config',
+        'helper_slam_params.yaml',
+    ])
     urdf_file = PathJoinSubstitution([
         FindPackageShare('helper_description'),
         'urdf',
@@ -94,6 +99,7 @@ def generate_launch_description():
             ]),
             launch_arguments={
                 'use_sim_time': use_sim_time,
+                'slam_params_file': slam_params_file,
             }.items(),
         ),
         SetRemap(src='cmd_vel', dst='/control/cmd_vel'),

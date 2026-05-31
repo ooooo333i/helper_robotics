@@ -5,3 +5,4 @@ __pycache__/
 docs/
 *.pyc
 src/helper_perception/docs/
+src/helper_test.zip
