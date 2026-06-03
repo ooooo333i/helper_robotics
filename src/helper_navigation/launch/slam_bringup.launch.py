@@ -13,8 +13,8 @@ def generate_launch_description():
 
     use_sim_time = LaunchConfiguration('use_sim_time')
     use_motor = LaunchConfiguration('motor')
-    use_rviz = LaunchConfiguration('rviz')
 
+    use_rviz = LaunchConfiguration('rviz')
     return LaunchDescription([
         DeclareLaunchArgument(
             'use_sim_time',
