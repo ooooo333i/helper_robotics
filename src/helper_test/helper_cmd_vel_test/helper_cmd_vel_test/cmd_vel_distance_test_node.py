@@ -27,6 +27,7 @@ class CmdVelDistanceTest(Node):
         self.start_time = self.get_clock().now()
         self.stop_count = 0
         self.is_stopping = False
+        self.done = False
 
         if self.linear_x <= 0.0:
             self.get_logger().error('linear_x must be greater than 0.0')
@@ -69,7 +70,8 @@ class CmdVelDistanceTest(Node):
 
         if self.stop_count >= self.stop_publish_count:
             self.get_logger().info('distance test done, published stop command')
-            rclpy.shutdown()
+            self.done = True
+            self.timer.cancel()
 
 
 def main(args=None):
@@ -77,10 +79,11 @@ def main(args=None):
     node = CmdVelDistanceTest()
 
     try:
-        if rclpy.ok():
-            rclpy.spin(node)
+        while rclpy.ok() and not node.done:
+            rclpy.spin_once(node)
     except KeyboardInterrupt:
-        node.publish_stop()
+        if rclpy.ok():
+            node.publish_stop()
     finally:
         node.destroy_node()
         if rclpy.ok():

@@ -12,6 +12,7 @@ setup(
         ('share/' + package_name, ['package.xml']),
         ('share/' + package_name + '/launch', [
             'launch/cmd_vel_constant.launch.py',
+            'launch/cmd_vel_forward_test.launch.py',
             'launch/cmd_vel_sequence.launch.py',
             'launch/obstacle_decision_sequence.launch.py',
         ]),

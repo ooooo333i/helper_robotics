@@ -66,7 +66,11 @@ class MotorDriverNode(Node):
 
         self.target_left_rpm = 0
         self.target_right_rpm = 0
+        self.current_left_rpm = 0
+        self.current_right_rpm = 0
         self.last_cmd_time = self.get_clock().now()
+        self.last_control_time = self.get_clock().now()
+        self.pending_brake_timer = None
         self.is_stopped = True
         self.safety_stop_active = False
         self.obstacle_decision = 'unknown'
@@ -150,15 +154,20 @@ class MotorDriverNode(Node):
         self.declare_parameter('odom_publish_rate', self.cfg.ODOM_PUBLISH_RATE)
         self.declare_parameter('cmd_timeout', self.cfg.CMD_TIMEOUT)
         self.declare_parameter('com_watch_delay', self.cfg.COM_WATCH_DELAY)
+        self.declare_parameter('accel_rpm_per_sec', self.cfg.ACCEL_RPM_PER_SEC)
+        self.declare_parameter('decel_rpm_per_sec', self.cfg.DECEL_RPM_PER_SEC)
         self.declare_parameter(
             'use_cmd_brake_on_stop',
             self.cfg.USE_CMD_BRAKE_ON_STOP,
         )
+        self.declare_parameter('brake_delay_sec', self.cfg.BRAKE_DELAY_SEC)
         self.declare_parameter('left_forward_sign', self.cfg.LEFT_FORWARD_SIGN)
         self.declare_parameter(
             'right_forward_sign',
             self.cfg.RIGHT_FORWARD_SIGN,
         )
+        self.declare_parameter('left_rpm_scale', self.cfg.LEFT_RPM_SCALE)
+        self.declare_parameter('right_rpm_scale', self.cfg.RIGHT_RPM_SCALE)
         self.declare_parameter('swap_motors', self.cfg.SWAP_MOTORS)
         self.declare_parameter('publish_tf', True)
         self.declare_parameter('invert_left_motor', False)
@@ -207,14 +216,29 @@ class MotorDriverNode(Node):
         self.cfg.COM_WATCH_DELAY = int(
             self.get_parameter('com_watch_delay').value
         )
+        self.cfg.ACCEL_RPM_PER_SEC = float(
+            self.get_parameter('accel_rpm_per_sec').value
+        )
+        self.cfg.DECEL_RPM_PER_SEC = float(
+            self.get_parameter('decel_rpm_per_sec').value
+        )
         self.cfg.USE_CMD_BRAKE_ON_STOP = bool(
             self.get_parameter('use_cmd_brake_on_stop').value
+        )
+        self.cfg.BRAKE_DELAY_SEC = float(
+            self.get_parameter('brake_delay_sec').value
         )
         self.cfg.LEFT_FORWARD_SIGN = int(
             self.get_parameter('left_forward_sign').value
         )
         self.cfg.RIGHT_FORWARD_SIGN = int(
             self.get_parameter('right_forward_sign').value
+        )
+        self.cfg.LEFT_RPM_SCALE = float(
+            self.get_parameter('left_rpm_scale').value
+        )
+        self.cfg.RIGHT_RPM_SCALE = float(
+            self.get_parameter('right_rpm_scale').value
         )
         self.cfg.SWAP_MOTORS = bool(
             self.get_parameter('swap_motors').value
@@ -276,6 +300,12 @@ class MotorDriverNode(Node):
         self.last_cmd_time = self.get_clock().now()
 
     def control_loop(self):
+        now = self.get_clock().now()
+        dt = (now - self.last_control_time).nanoseconds / 1e9
+        self.last_control_time = now
+        if dt <= 0.0:
+            dt = 1.0 / max(self.control_rate, 1.0)
+
         timed_out = self.watchdog_check_callback()
 
         left_rpm, right_rpm = self.apply_safety_gate(
@@ -283,14 +313,37 @@ class MotorDriverNode(Node):
             self.target_right_rpm,
         )
 
-        if left_rpm == 0 and right_rpm == 0:
+        hard_stop = timed_out or self.safety_stop_active
+        if hard_stop:
+            self.current_left_rpm = 0
+            self.current_right_rpm = 0
             if not self.is_stopped:
                 self.send_stop_command(
                     use_brake=timed_out or self.cfg.USE_CMD_BRAKE_ON_STOP
                 )
             return
 
+        self.current_left_rpm = self._ramp_rpm(
+            self.current_left_rpm,
+            left_rpm,
+            dt,
+        )
+        self.current_right_rpm = self._ramp_rpm(
+            self.current_right_rpm,
+            right_rpm,
+            dt,
+        )
+
+        left_rpm = self.current_left_rpm
+        right_rpm = self.current_right_rpm
+
+        if left_rpm == 0 and right_rpm == 0:
+            if not self.is_stopped:
+                self.send_stop_command(use_brake=False)
+            return
+
         motor1_rpm, motor2_rpm = self._apply_motor_mapping(left_rpm, right_rpm)
+        self._cancel_pending_brake()
         if self.connected:
             self.driver.send_rpm_command(motor1_rpm, motor2_rpm)
             self.is_stopped = False
@@ -320,14 +373,74 @@ class MotorDriverNode(Node):
         if self.cfg.SWAP_MOTORS:
             left_rpm, right_rpm = right_rpm, left_rpm
 
-        motor1_rpm = left_rpm * self.cfg.LEFT_FORWARD_SIGN
-        motor2_rpm = right_rpm * self.cfg.RIGHT_FORWARD_SIGN
+        left_rpm *= self.cfg.LEFT_RPM_SCALE
+        right_rpm *= self.cfg.RIGHT_RPM_SCALE
+
+        motor1_rpm = int(round(left_rpm * self.cfg.LEFT_FORWARD_SIGN))
+        motor2_rpm = int(round(right_rpm * self.cfg.RIGHT_FORWARD_SIGN))
         return motor1_rpm, motor2_rpm
+
+    def _ramp_rpm(self, current_rpm, target_rpm, dt):
+        current_rpm = float(current_rpm)
+        target_rpm = float(target_rpm)
+        delta = target_rpm - current_rpm
+        if abs(delta) < 0.5:
+            return int(round(target_rpm))
+
+        rate = self._select_ramp_rate(current_rpm, target_rpm)
+        max_step = max(rate * dt, 1.0)
+        if abs(delta) <= max_step:
+            return int(round(target_rpm))
+
+        if delta > 0.0:
+            return int(round(current_rpm + max_step))
+        return int(round(current_rpm - max_step))
+
+    def _select_ramp_rate(self, current_rpm, target_rpm):
+        current_abs = abs(current_rpm)
+        target_abs = abs(target_rpm)
+
+        if target_abs > current_abs:
+            return max(self.cfg.ACCEL_RPM_PER_SEC, 1.0)
+        return max(self.cfg.DECEL_RPM_PER_SEC, 1.0)
 
     def _send_brake_stop(self):
         self.driver.send_rpm_command(0, 0)
         self.driver.send_param(PID_COMMAND, CMD_BRAKE, 1)
         self.driver.send_rpm_command(0, 0)
+
+    def _schedule_brake_command(self):
+        self._cancel_pending_brake()
+
+        delay_sec = max(self.cfg.BRAKE_DELAY_SEC, 0.0)
+        if delay_sec <= 0.0:
+            self._send_brake_stop()
+            return
+
+        self.pending_brake_timer = self.create_timer(
+            delay_sec,
+            self._delayed_brake_callback,
+        )
+        self.get_logger().info(
+            f'brake command scheduled after {delay_sec:.2f}s'
+        )
+
+    def _delayed_brake_callback(self):
+        if self.pending_brake_timer is not None:
+            self.pending_brake_timer.cancel()
+            self.pending_brake_timer = None
+
+        if self.connected:
+            self.driver.send_param(PID_COMMAND, CMD_BRAKE, 1)
+            self.driver.send_rpm_command(0, 0)
+            self.get_logger().info('delayed brake command sent')
+
+    def _cancel_pending_brake(self):
+        if self.pending_brake_timer is None:
+            return
+
+        self.pending_brake_timer.cancel()
+        self.pending_brake_timer = None
 
     def send_stop_command(self, use_brake=None):
         if use_brake is None:
@@ -335,13 +448,17 @@ class MotorDriverNode(Node):
 
         if self.connected:
             if use_brake:
-                self._send_brake_stop()
+                self.driver.send_rpm_command(0, 0)
+                self._schedule_brake_command()
             else:
+                self._cancel_pending_brake()
                 self.driver.send_rpm_command(0, 0)
         elif self.dry_run:
             self.log_dry_run_command(0, 0)
 
         self.is_stopped = True
+        self.current_left_rpm = 0
+        self.current_right_rpm = 0
 
     def apply_safety_gate(self, left_rpm, right_rpm):
         if not self.safety_stop_enabled:
@@ -458,7 +575,8 @@ class MotorDriverNode(Node):
             self.tf_broadcaster.sendTransform(transform)
 
     def destroy_node(self):
-        self.send_stop_command()
+        self._cancel_pending_brake()
+        self.send_stop_command(use_brake=False)
         if self.driver is not None:
             self.driver.disconnect()
         super().destroy_node()
