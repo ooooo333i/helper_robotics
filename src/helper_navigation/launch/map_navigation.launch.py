@@ -168,6 +168,7 @@ def generate_launch_description():
                 ),
                 'speed_limit_topic': '/speed_limit',
                 'avoid_replan_delay_sec': 0.25,
+                'avoid_replan_cooldown_sec': 2.0,
                 'avoid_clear_costmaps': False,
             }],
         ),

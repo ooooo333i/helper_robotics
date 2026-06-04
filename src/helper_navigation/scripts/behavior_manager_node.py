@@ -35,6 +35,7 @@ class BehaviorManagerNode(Node):
         self.declare_parameter('overcome_speed_limit', 0.08)
         self.declare_parameter('behavior_publish_rate_hz', 2.0)
         self.declare_parameter('avoid_replan_delay_sec', 0.25)
+        self.declare_parameter('avoid_replan_cooldown_sec', 2.0)
         self.declare_parameter('avoid_clear_costmaps', False)
 
         self.behavior = 'run'
@@ -46,6 +47,7 @@ class BehaviorManagerNode(Node):
         self.clear_in_progress = False
         self.restart_in_progress = False
         self.restart_timer = None
+        self.last_avoid_replan_time = None
 
         behavior_cmd_topic = self.get_parameter('behavior_cmd_topic').value
         behavior_state_topic = self.get_parameter('behavior_state_topic').value
@@ -106,7 +108,6 @@ class BehaviorManagerNode(Node):
             return
         if behavior == self.behavior:
             if behavior == 'avoid':
-                self.get_logger().info('avoid requested again; replanning current goal')
                 self.handle_avoid()
             return
 
@@ -276,10 +277,30 @@ class BehaviorManagerNode(Node):
         self.send_goal(self.current_goal)
 
     def handle_avoid(self):
+        if not self.avoid_replan_allowed():
+            return
+
+        self.last_avoid_replan_time = self.get_clock().now()
         self.clear_speed_limit()
         if bool(self.get_parameter('avoid_clear_costmaps').value):
             self.clear_costmaps()
         self.restart_current_goal()
+
+    def avoid_replan_allowed(self):
+        if self.restart_in_progress:
+            self.get_logger().info('avoid replan is already in progress')
+            return False
+
+        if self.last_avoid_replan_time is None:
+            return True
+
+        cooldown = float(
+            self.get_parameter('avoid_replan_cooldown_sec').value
+        )
+        elapsed = (
+            self.get_clock().now() - self.last_avoid_replan_time
+        ).nanoseconds / 1e9
+        return elapsed >= cooldown
 
     def retry_pending_goal(self):
         if self.behavior == 'stop':
