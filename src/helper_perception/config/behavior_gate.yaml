@@ -1,0 +1,20 @@
+perception_behavior_gate_node:
+  ros__parameters:
+    path_topic: /plan
+    scan_topic: /perception/scan/filtered
+    behavior_cmd_topic: /planning/behavior_cmd
+    base_frame: base_link
+    path_timeout_sec: 1.0
+    scan_timeout_sec: 0.5
+    path_lookahead_m: 1.0
+    path_obstacle_width_m: 0.25
+    obstacle_min_range_m: 0.05
+    obstacle_max_range_m: 2.0
+    tracking_frame: odom
+    dynamic_speed_threshold_mps: 0.20
+    dynamic_match_distance_m: 0.35
+    cluster_max_gap_m: 0.15
+    cluster_min_points: 3
+    scan_sample_step: 1
+    publish_rate_hz: 5.0
+    publish_repeated_commands: false
