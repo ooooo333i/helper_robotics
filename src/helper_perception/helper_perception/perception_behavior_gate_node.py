@@ -40,7 +40,7 @@ class PerceptionBehaviorGateNode(Node):
         self.declare_parameter('path_obstacle_width_m', 0.25)  # 주행경로 반경 0.25m
         self.declare_parameter('obstacle_min_range_m', 0.05)
         self.declare_parameter('obstacle_max_range_m', 2.0)
-        self.declare_parameter('dynamic_speed_threshold_mps', 0.15)
+        self.declare_parameter('dynamic_speed_threshold_mps', 0.5)
         self.declare_parameter('dynamic_match_distance_m', 0.60)
         self.declare_parameter('cluster_max_gap_m', 0.15)
         self.declare_parameter('cluster_min_points', 3)

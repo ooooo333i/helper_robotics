@@ -14,7 +14,7 @@ perception_behavior_gate_node:
     obstacle_min_range_m: 0.05
     obstacle_max_range_m: 2.0
     tracking_frame: odom
-    dynamic_speed_threshold_mps: 0.15
+    dynamic_speed_threshold_mps: 0.5
     dynamic_match_distance_m: 0.60
     cluster_max_gap_m: 0.15
     cluster_min_points: 3
