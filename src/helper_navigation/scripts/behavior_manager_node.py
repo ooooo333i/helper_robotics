@@ -107,8 +107,6 @@ class BehaviorManagerNode(Node):
             self.get_logger().warn(f'ignoring unknown behavior: {msg.data}')
             return
         if behavior == self.behavior:
-            if behavior == 'avoid':
-                self.handle_avoid()
             return
 
         previous = self.behavior
@@ -277,14 +275,8 @@ class BehaviorManagerNode(Node):
         self.send_goal(self.current_goal)
 
     def handle_avoid(self):
-        if not self.avoid_replan_allowed():
-            return
-
-        self.last_avoid_replan_time = self.get_clock().now()
         self.clear_speed_limit()
-        if bool(self.get_parameter('avoid_clear_costmaps').value):
-            self.clear_costmaps()
-        self.restart_current_goal()
+        self.resume_current_goal()
 
     def avoid_replan_allowed(self):
         if self.restart_in_progress:
