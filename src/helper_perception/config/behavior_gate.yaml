@@ -2,6 +2,7 @@ perception_behavior_gate_node:
   ros__parameters:
     path_topic: /local_plan
     scan_topic: /perception/scan/filtered
+    depth_topic: /perception/obstacle/depth
     odom_topic: /control/odom
     behavior_cmd_topic: /planning/behavior_cmd
     dynamic_obstacle_topic: /perception/obstacle/dynamic
@@ -11,8 +12,13 @@ perception_behavior_gate_node:
     scan_timeout_sec: 0.5
     path_lookahead_m: 1.0
     path_obstacle_width_m: 0.25
+    immediate_obstacle_range_m: 0.45
+    immediate_obstacle_width_m: 0.30
     obstacle_min_range_m: 0.05
     obstacle_max_range_m: 2.0
+    lidar_initial_stop_sec: 0.5
+    depth_timeout_sec: 0.5
+    depth_overcome_height_m: 0.10
     tracking_frame: odom
     dynamic_speed_threshold_mps: 0.5
     dynamic_match_distance_m: 0.60

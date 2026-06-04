@@ -1,5 +1,6 @@
 import math
 
+from helper_msgs.msg import ObstacleDecision
 import rclpy
 from nav_msgs.msg import Odometry
 from nav_msgs.msg import Path
@@ -22,6 +23,7 @@ class PerceptionBehaviorGateNode(Node):
 
         self.declare_parameter('path_topic', '/plan')
         self.declare_parameter('scan_topic', '/perception/scan/filtered')
+        self.declare_parameter('depth_topic', '/perception/obstacle/depth')
         self.declare_parameter('odom_topic', '/control/odom')
         self.declare_parameter('behavior_cmd_topic', '/planning/behavior_cmd')
         self.declare_parameter(
@@ -38,8 +40,13 @@ class PerceptionBehaviorGateNode(Node):
         self.declare_parameter('scan_timeout_sec', 0.5)
         self.declare_parameter('path_lookahead_m', 1.0) # 주행경로 기준 전방 1m
         self.declare_parameter('path_obstacle_width_m', 0.25)  # 주행경로 반경 0.25m
+        self.declare_parameter('immediate_obstacle_range_m', 0.45)
+        self.declare_parameter('immediate_obstacle_width_m', 0.30)
         self.declare_parameter('obstacle_min_range_m', 0.05)
         self.declare_parameter('obstacle_max_range_m', 2.0)
+        self.declare_parameter('lidar_initial_stop_sec', 0.5)
+        self.declare_parameter('depth_timeout_sec', 0.5)
+        self.declare_parameter('depth_overcome_height_m', 0.10)
         self.declare_parameter('dynamic_speed_threshold_mps', 0.5)
         self.declare_parameter('dynamic_match_distance_m', 0.60)
         self.declare_parameter('cluster_max_gap_m', 0.15)
@@ -57,6 +64,8 @@ class PerceptionBehaviorGateNode(Node):
         self.path_stamp = None
         self.scan = None
         self.scan_stamp = None
+        self.depth_msg = None
+        self.depth_stamp = None
         self.odom = None
         self.odom_stamp = None
         self.last_behavior = None
@@ -69,6 +78,7 @@ class PerceptionBehaviorGateNode(Node):
         self.stop_latch_time = None
         self.stop_clear_start_time = None
         self.stop_release_behavior = None
+        self.lidar_obstacle_start_time = None
 
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
@@ -101,6 +111,12 @@ class PerceptionBehaviorGateNode(Node):
             10,
         )
         self.create_subscription(
+            ObstacleDecision,
+            self.get_parameter('depth_topic').value,
+            self.depth_callback,
+            10,
+        )
+        self.create_subscription(
             Odometry,
             self.get_parameter('odom_topic').value,
             self.odom_callback,
@@ -114,6 +130,7 @@ class PerceptionBehaviorGateNode(Node):
             'perception behavior gate: '
             f'path={self.get_parameter("path_topic").value}, '
             f'scan={self.get_parameter("scan_topic").value}, '
+            f'depth={self.get_parameter("depth_topic").value}, '
             f'odom={self.get_parameter("odom_topic").value}, '
             f'behavior_cmd={self.get_parameter("behavior_cmd_topic").value}, '
             f'dynamic={self.get_parameter("dynamic_obstacle_topic").value}, '
@@ -127,6 +144,10 @@ class PerceptionBehaviorGateNode(Node):
     def scan_callback(self, msg):
         self.scan = msg
         self.scan_stamp = self.get_clock().now()
+
+    def depth_callback(self, msg):
+        self.depth_msg = msg
+        self.depth_stamp = self.get_clock().now()
 
     def odom_callback(self, msg):
         self.odom = msg
@@ -172,13 +193,43 @@ class PerceptionBehaviorGateNode(Node):
             self.dynamic_obstacle = self.is_dynamic_obstacle(obstacle_center)
             if self.dynamic_obstacle:
                 raw_behavior = 'stop'
+            elif self.lidar_initial_stop_active():
+                raw_behavior = 'stop'
             else:
                 raw_behavior = 'avoid'
         else:
             self.tracked_obstacle = None
             self.dynamic_obstacle = False
+            self.lidar_obstacle_start_time = None
+            raw_behavior = self.depth_behavior()
 
         return self.apply_stop_latch(raw_behavior)
+
+    def lidar_initial_stop_active(self):
+        now = self.get_clock().now()
+        if self.lidar_obstacle_start_time is None:
+            self.lidar_obstacle_start_time = now
+            return True
+
+        stop_sec = float(self.get_parameter('lidar_initial_stop_sec').value)
+        elapsed = (
+            now - self.lidar_obstacle_start_time
+        ).nanoseconds / 1e9
+        return elapsed < stop_sec
+
+    def depth_behavior(self):
+        if not self.depth_is_fresh():
+            return 'run'
+        if self.depth_msg is None or self.depth_msg.decision != 'obstacle':
+            return 'run'
+
+        height = float(self.depth_msg.height)
+        threshold = float(
+            self.get_parameter('depth_overcome_height_m').value
+        )
+        if math.isfinite(height) and height <= threshold:
+            return 'overcome'
+        return 'avoid'
 
     def apply_stop_latch(self, raw_behavior):
         if not bool(self.get_parameter('stop_latch_enabled').value):
@@ -271,8 +322,28 @@ class PerceptionBehaviorGateNode(Node):
         if closest_cluster is not None and closest <= width:
             return True, closest, closest_cluster['centroid']
 
+        immediate_cluster = self.find_immediate_lidar_obstacle(clusters)
+        if immediate_cluster is not None:
+            return True, 0.0, immediate_cluster['centroid']
+
         centroid = closest_cluster['centroid'] if closest_cluster else None
         return False, closest, centroid
+
+    def find_immediate_lidar_obstacle(self, clusters):
+        max_range = float(
+            self.get_parameter('immediate_obstacle_range_m').value
+        )
+        half_width = float(
+            self.get_parameter('immediate_obstacle_width_m').value
+        )
+        candidates = []
+        for cluster in clusters:
+            x, y = cluster['centroid']
+            if 0.0 <= x <= max_range and abs(y) <= half_width:
+                candidates.append(cluster)
+        if not candidates:
+            return None
+        return min(candidates, key=lambda cluster: cluster['min_range'])
 
     def is_dynamic_obstacle(self, obstacle_point_base):
         point = self.point_in_tracking_frame(obstacle_point_base)
@@ -512,6 +583,15 @@ class PerceptionBehaviorGateNode(Node):
         timeout_sec = float(self.get_parameter('scan_timeout_sec').value)
         elapsed = (
             self.get_clock().now() - self.scan_stamp
+        ).nanoseconds / 1e9
+        return elapsed <= timeout_sec
+
+    def depth_is_fresh(self):
+        if self.depth_msg is None or self.depth_stamp is None:
+            return False
+        timeout_sec = float(self.get_parameter('depth_timeout_sec').value)
+        elapsed = (
+            self.get_clock().now() - self.depth_stamp
         ).nanoseconds / 1e9
         return elapsed <= timeout_sec
 
