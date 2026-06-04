@@ -22,19 +22,9 @@ def generate_launch_description():
 
     return LaunchDescription([
         DeclareLaunchArgument(
-            'safety_stop_enabled',
-            default_value='true',
-            description='Enable obstacle safety stop gate.',
-        ),
-        DeclareLaunchArgument(
-            'stop_on_unknown',
-            default_value='false',
-            description='Stop when obstacle decision is unknown or stale.',
-        ),
-        DeclareLaunchArgument(
-            'obstacle_topic',
-            default_value='/perception/obstacle/fused',
-            description='ObstacleDecision topic consumed by the motor driver.',
+            'serial_port',
+            default_value=serial_port,
+            description='Serial port for the motor driver.',
         ),
         DeclareLaunchArgument(
             'cmd_vel_topic',
@@ -61,30 +51,14 @@ def generate_launch_description():
                 params_file,
                 {
                     'serial_port': ParameterValue(
-                        serial_port,
+                        LaunchConfiguration('serial_port'),
                         value_type=str,
                     ),
                     'cmd_vel_topic': ParameterValue(
                         LaunchConfiguration('cmd_vel_topic'),
                         value_type=str,
                     ),
-                    'obstacle_topic': ParameterValue(
-                        LaunchConfiguration('obstacle_topic'),
-                        value_type=str,
-                    ),
-                    'obstacle_topics': [
-                        '/perception/obstacle/fused',
-                        '/perception/obstacle/range',
-                        '/perception/obstacle/depth',
-                    ],
-                    'safety_stop_enabled': ParameterValue(
-                        LaunchConfiguration('safety_stop_enabled'),
-                        value_type=bool,
-                    ),
-                    'stop_on_unknown': ParameterValue(
-                        LaunchConfiguration('stop_on_unknown'),
-                        value_type=bool,
-                    ),
+                    'safety_stop_enabled': False,
                 },
             ],
         ),

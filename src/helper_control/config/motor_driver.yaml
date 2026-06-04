@@ -2,11 +2,6 @@ motor_driver_node:
   ros__parameters:
     cmd_vel_topic: /control/cmd_vel_safe
     odom_topic: /control/odom
-    obstacle_topic: /perception/obstacle/fused
-    obstacle_topics:
-      - /perception/obstacle/fused
-      - /perception/obstacle/range
-      - /perception/obstacle/depth
 
     serial_port: /dev/ttyUSB0
     baud_rate: 57600
@@ -38,7 +33,7 @@ motor_driver_node:
     invert_right_motor: false
 
     dry_run: false
-    safety_stop_enabled: true
+    safety_stop_enabled: false
     stop_on_unknown: false
     obstacle_timeout: 1.0
     dry_run_log_period: 1.0

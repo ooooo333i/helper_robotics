@@ -19,7 +19,6 @@ def generate_launch_description():
     front_lidar_baudrate = LaunchConfiguration('front_lidar_baudrate')
     motor_port = LaunchConfiguration('motor_port')
     cmd_vel_topic = LaunchConfiguration('cmd_vel_topic')
-    safety_stop_enabled = LaunchConfiguration('safety_stop_enabled')
     use_sim_time = LaunchConfiguration('use_sim_time')
 
     slam_params_file = PathJoinSubstitution([
@@ -48,11 +47,6 @@ def generate_launch_description():
             'cmd_vel_topic',
             default_value='/control/cmd_vel_test',
             description='Twist topic consumed by the motor driver.',
-        ),
-        DeclareLaunchArgument(
-            'safety_stop_enabled',
-            default_value='false',
-            description='Enable obstacle safety stop in the motor driver.',
         ),
         DeclareLaunchArgument(
             'use_sim_time',
@@ -89,10 +83,6 @@ def generate_launch_description():
             parameters=[{
                 'serial_port': ParameterValue(motor_port, value_type=str),
                 'cmd_vel_topic': ParameterValue(cmd_vel_topic, value_type=str),
-                'safety_stop_enabled': ParameterValue(
-                    safety_stop_enabled,
-                    value_type=bool,
-                ),
             }],
         ),
         IncludeLaunchDescription(

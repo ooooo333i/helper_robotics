@@ -22,6 +22,9 @@ def generate_launch_description():
     nav2_bringup_dir = FindPackageShare('nav2_bringup')
 
     map_file = LaunchConfiguration('map')
+    front_lidar_port = LaunchConfiguration('front_lidar_port')
+    front_lidar_baudrate = LaunchConfiguration('front_lidar_baudrate')
+    motor_port = LaunchConfiguration('motor_port')
     use_sim_time = LaunchConfiguration('use_sim_time')
     use_motor = LaunchConfiguration('motor')
     use_rviz = LaunchConfiguration('rviz')
@@ -50,12 +53,32 @@ def generate_launch_description():
         'launch',
         'motor_driver.launch.py',
     ])
+    front_lidar_launch_file = PathJoinSubstitution([
+        FindPackageShare('helper_perception'),
+        'launch',
+        'front_lidar_slam.launch.py',
+    ])
 
     return LaunchDescription([
         DeclareLaunchArgument(
             'map',
             default_value='',
             description='Full path to the saved map yaml file.',
+        ),
+        DeclareLaunchArgument(
+            'front_lidar_port',
+            default_value='/dev/ttyUSB1',
+            description='Serial port for the front LiDAR.',
+        ),
+        DeclareLaunchArgument(
+            'front_lidar_baudrate',
+            default_value='460800',
+            description='Serial baudrate for the front LiDAR.',
+        ),
+        DeclareLaunchArgument(
+            'motor_port',
+            default_value='/dev/ttyUSB2',
+            description='Serial port for the motor driver.',
         ),
         DeclareLaunchArgument(
             'use_sim_time',
@@ -83,8 +106,18 @@ def generate_launch_description():
             }],
         ),
         IncludeLaunchDescription(
+            PythonLaunchDescriptionSource([front_lidar_launch_file]),
+            launch_arguments={
+                'front_serial_port': front_lidar_port,
+                'front_serial_baudrate': front_lidar_baudrate,
+            }.items(),
+        ),
+        IncludeLaunchDescription(
             PythonLaunchDescriptionSource([motor_launch_file]),
             condition=IfCondition(use_motor),
+            launch_arguments={
+                'serial_port': motor_port,
+            }.items(),
         ),
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource([
