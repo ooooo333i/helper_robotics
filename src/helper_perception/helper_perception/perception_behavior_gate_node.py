@@ -80,6 +80,7 @@ class PerceptionBehaviorGateNode(Node):
         self.tracked_obstacle = None
         self.dynamic_obstacle = False
         self.dynamic_stop_latched = False
+        self.depth_dynamic_stop_active = False
         self.stop_latched = False
         self.stop_latch_time = None
         self.stop_clear_start_time = None
@@ -199,25 +200,29 @@ class PerceptionBehaviorGateNode(Node):
         self.last_obstacle_distance = distance
         self.last_obstacle_range = obstacle_range
         raw_behavior = 'run'
+        latch_stop = False
         if obstacle_on_path:
             self.dynamic_obstacle = self.is_dynamic_obstacle(obstacle_center)
             if self.dynamic_obstacle or self.dynamic_stop_latched:
                 self.dynamic_stop_latched = True
                 raw_behavior = 'stop'
+                latch_stop = True
             elif obstacle_range <= float(
                 self.get_parameter('lidar_stop_distance_m').value
             ):
                 raw_behavior = 'stop'
             else:
                 raw_behavior = self.depth_behavior()
+                latch_stop = self.depth_dynamic_stop_active
         else:
             self.tracked_obstacle = None
             self.dynamic_obstacle = False
             self.dynamic_stop_latched = False
             self.lidar_obstacle_start_time = None
             raw_behavior = self.depth_behavior()
+            latch_stop = self.depth_dynamic_stop_active
 
-        return self.apply_stop_latch(raw_behavior)
+        return self.apply_stop_latch(raw_behavior, latch_stop)
 
     def initial_obstacle_stop_active(self, start_attr, duration_param):
         now = self.get_clock().now()
@@ -244,15 +249,19 @@ class PerceptionBehaviorGateNode(Node):
         now = self.get_clock().now()
         if not self.depth_is_fresh():
             self.depth_obstacle_start_time = None
+            self.depth_dynamic_stop_active = False
             return self.overcome_clear_behavior(now)
         if self.depth_msg is None or self.depth_msg.decision != 'obstacle':
             self.depth_obstacle_start_time = None
+            self.depth_dynamic_stop_active = False
             return self.overcome_clear_behavior(now)
 
         if self.depth_msg.is_dynamic:
             self.dynamic_obstacle = True
+            self.depth_dynamic_stop_active = True
             return 'stop'
 
+        self.depth_dynamic_stop_active = False
         height = float(self.depth_msg.height)
         threshold = float(
             self.get_parameter('depth_overcome_height_m').value
@@ -287,12 +296,19 @@ class PerceptionBehaviorGateNode(Node):
         self.overcome_clear_start_time = None
         return 'run'
 
-    def apply_stop_latch(self, raw_behavior):
+    def apply_stop_latch(self, raw_behavior, latch_stop=False):
         if not bool(self.get_parameter('stop_latch_enabled').value):
             return raw_behavior
 
         now = self.get_clock().now()
         if raw_behavior == 'stop':
+            if not latch_stop:
+                self.stop_latched = False
+                self.stop_latch_time = None
+                self.stop_clear_start_time = None
+                self.stop_release_behavior = None
+                return 'stop'
+
             self.stop_latched = True
             if self.stop_latch_time is None:
                 self.stop_latch_time = now
@@ -699,6 +715,7 @@ class PerceptionBehaviorGateNode(Node):
             f'obstacle_range={obstacle_range_text}, '
             f'dynamic_speed={speed_text}, '
             f'dynamic_obstacle={self.dynamic_obstacle}, '
+            f'depth_dynamic_stop={self.depth_dynamic_stop_active}, '
             f'stop_latched={self.stop_latched}'
         )
 
