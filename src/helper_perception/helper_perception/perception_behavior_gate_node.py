@@ -40,18 +40,18 @@ class PerceptionBehaviorGateNode(Node):
         self.declare_parameter('path_obstacle_width_m', 0.25)  # 주행경로 반경 0.25m
         self.declare_parameter('obstacle_min_range_m', 0.05)
         self.declare_parameter('obstacle_max_range_m', 2.0)
-        self.declare_parameter('dynamic_speed_threshold_mps', 0.08)
+        self.declare_parameter('dynamic_speed_threshold_mps', 0.15)
         self.declare_parameter('dynamic_match_distance_m', 0.60)
         self.declare_parameter('cluster_max_gap_m', 0.15)
         self.declare_parameter('cluster_min_points', 3)
         self.declare_parameter('scan_sample_step', 1)
         self.declare_parameter('stop_latch_enabled', True)
         self.declare_parameter('stop_min_hold_sec', 0.8)
-        self.declare_parameter('stop_clear_hold_sec', 1.0)
+        self.declare_parameter('stop_clear_hold_sec', 2.0)
         self.declare_parameter('stopped_linear_threshold_mps', 0.03)
         self.declare_parameter('stopped_angular_threshold_radps', 0.08)
         self.declare_parameter('publish_rate_hz', 5.0)
-        self.declare_parameter('publish_repeated_commands', True)
+        self.declare_parameter('publish_repeated_commands', False)
 
         self.path = None
         self.path_stamp = None
@@ -68,6 +68,7 @@ class PerceptionBehaviorGateNode(Node):
         self.stop_latched = False
         self.stop_latch_time = None
         self.stop_clear_start_time = None
+        self.stop_release_behavior = None
 
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
@@ -189,6 +190,7 @@ class PerceptionBehaviorGateNode(Node):
             if self.stop_latch_time is None:
                 self.stop_latch_time = now
             self.stop_clear_start_time = None
+            self.stop_release_behavior = None
             return 'stop'
 
         if not self.stop_latched:
@@ -200,35 +202,31 @@ class PerceptionBehaviorGateNode(Node):
         ).nanoseconds / 1e9 if self.stop_latch_time is not None else 0.0
         if held_sec < hold_sec:
             return 'stop'
-        if raw_behavior != 'run':
-            self.stop_clear_start_time = None
-            return 'stop'
-        if not self.robot_is_stopped():
-            self.stop_clear_start_time = None
-            return 'stop'
-        if not self.stop_clear_hold_satisfied(now):
+        if not self.stop_release_hold_satisfied(now, raw_behavior):
             return 'stop'
 
         self.stop_latched = False
         self.stop_latch_time = None
         self.stop_clear_start_time = None
+        self.stop_release_behavior = None
         return raw_behavior
 
-    def stop_clear_hold_satisfied(self, now):
+    def stop_release_hold_satisfied(self, now, raw_behavior):
         clear_hold_sec = float(
             self.get_parameter('stop_clear_hold_sec').value
         )
         if clear_hold_sec <= 0.0:
             return True
 
-        if self.stop_clear_start_time is None:
+        if raw_behavior != self.stop_release_behavior:
+            self.stop_release_behavior = raw_behavior
             self.stop_clear_start_time = now
             return False
 
-        clear_sec = (
+        stable_sec = (
             now - self.stop_clear_start_time
         ).nanoseconds / 1e9
-        return clear_sec >= clear_hold_sec
+        return stable_sec >= clear_hold_sec
 
     def robot_is_stopped(self):
         if self.odom is None:
