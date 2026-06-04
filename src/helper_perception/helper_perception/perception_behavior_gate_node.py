@@ -44,7 +44,6 @@ class PerceptionBehaviorGateNode(Node):
         self.declare_parameter('immediate_obstacle_width_m', 0.30)
         self.declare_parameter('obstacle_min_range_m', 0.05)
         self.declare_parameter('obstacle_max_range_m', 3.0)
-        self.declare_parameter('lidar_stop_distance_m', 0.20)
         self.declare_parameter('lidar_initial_stop_sec', 0.5)
         self.declare_parameter('depth_initial_stop_sec', 0.5)
         self.declare_parameter('require_stopped_before_obstacle_decision', True)
@@ -215,14 +214,9 @@ class PerceptionBehaviorGateNode(Node):
                 self.dynamic_stop_latched = True
                 raw_behavior = 'stop'
                 latch_stop = True
-            elif obstacle_range <= float(
-                self.get_parameter('lidar_stop_distance_m').value
-            ):
-                self.dynamic_obstacle = False
-                raw_behavior = 'stop'
             else:
                 self.dynamic_obstacle = False
-                raw_behavior = self.depth_behavior()
+                raw_behavior = 'avoid'
                 latch_stop = self.depth_dynamic_stop_active
         else:
             self.tracked_obstacle = None
