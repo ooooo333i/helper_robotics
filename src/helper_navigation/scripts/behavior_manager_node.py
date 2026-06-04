@@ -34,6 +34,8 @@ class BehaviorManagerNode(Node):
         )
         self.declare_parameter('overcome_speed_limit', 0.08)
         self.declare_parameter('behavior_publish_rate_hz', 2.0)
+        self.declare_parameter('avoid_replan_delay_sec', 0.25)
+        self.declare_parameter('avoid_clear_costmaps', False)
 
         self.behavior = 'run'
         self.current_goal = None
@@ -42,6 +44,8 @@ class BehaviorManagerNode(Node):
         self.goal_pending = False
         self.paused_by_behavior = False
         self.clear_in_progress = False
+        self.restart_in_progress = False
+        self.restart_timer = None
 
         behavior_cmd_topic = self.get_parameter('behavior_cmd_topic').value
         behavior_state_topic = self.get_parameter('behavior_state_topic').value
@@ -101,6 +105,9 @@ class BehaviorManagerNode(Node):
             self.get_logger().warn(f'ignoring unknown behavior: {msg.data}')
             return
         if behavior == self.behavior:
+            if behavior == 'avoid':
+                self.get_logger().info('avoid requested again; replanning current goal')
+                self.handle_avoid()
             return
 
         previous = self.behavior
@@ -117,9 +124,7 @@ class BehaviorManagerNode(Node):
             self.apply_overcome_speed_limit()
             self.resume_current_goal()
         elif behavior == 'avoid':
-            self.clear_speed_limit()
-            self.clear_costmaps()
-            self.restart_current_goal()
+            self.handle_avoid()
 
     def goal_callback(self, msg):
         self.current_goal = msg
@@ -212,6 +217,11 @@ class BehaviorManagerNode(Node):
             self.get_logger().warn('avoid requested, but no goal is stored')
             return
 
+        if self.restart_in_progress:
+            self.get_logger().info('avoid replan is already in progress')
+            return
+
+        self.restart_in_progress = True
         self.goal_pending = True
         self.paused_by_behavior = False
         if self.goal_handle is not None and self.navigation_active:
@@ -219,12 +229,57 @@ class BehaviorManagerNode(Node):
             cancel_future.add_done_callback(self.restart_after_cancel_callback)
             return
 
-        self.send_goal(self.current_goal)
+        self.schedule_restart_current_goal()
 
     def restart_after_cancel_callback(self, future):
         self.navigation_active = False
+        try:
+            response = future.result()
+        except Exception as exc:
+            self.get_logger().warn(f'avoid replan cancel failed: {exc}')
+            self.schedule_restart_current_goal()
+            return
+
+        if response.goals_canceling:
+            self.get_logger().info('avoid replan: current Nav2 goal canceled')
+        else:
+            self.get_logger().warn('avoid replan: cancel request did not cancel a goal')
+
         if self.behavior != 'stop':
-            self.send_goal(self.current_goal)
+            self.schedule_restart_current_goal()
+        else:
+            self.restart_in_progress = False
+
+    def schedule_restart_current_goal(self):
+        if self.restart_timer is not None:
+            self.restart_timer.cancel()
+
+        delay = float(self.get_parameter('avoid_replan_delay_sec').value)
+        if delay <= 0.0:
+            self.send_replanned_goal()
+            return
+
+        self.restart_timer = self.create_timer(delay, self.send_replanned_goal)
+
+    def send_replanned_goal(self):
+        if self.restart_timer is not None:
+            self.restart_timer.cancel()
+            self.restart_timer = None
+
+        self.restart_in_progress = False
+        if self.behavior == 'stop':
+            return
+        if self.current_goal is None:
+            return
+
+        self.get_logger().info('avoid replan: sending current goal again')
+        self.send_goal(self.current_goal)
+
+    def handle_avoid(self):
+        self.clear_speed_limit()
+        if bool(self.get_parameter('avoid_clear_costmaps').value):
+            self.clear_costmaps()
+        self.restart_current_goal()
 
     def retry_pending_goal(self):
         if self.behavior == 'stop':
