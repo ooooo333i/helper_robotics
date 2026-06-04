@@ -167,6 +167,7 @@ def generate_launch_description():
                     '/global_costmap/clear_entirely_global_costmap'
                 ),
                 'speed_limit_topic': '/speed_limit',
+                'overcome_speed_limit_percentage': 80.0,
                 'avoid_replan_delay_sec': 0.25,
                 'avoid_replan_cooldown_sec': 2.0,
                 'avoid_clear_costmaps': False,

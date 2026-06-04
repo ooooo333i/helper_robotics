@@ -32,7 +32,7 @@ class BehaviorManagerNode(Node):
             'clear_global_costmap_service',
             '/global_costmap/clear_entirely_global_costmap',
         )
-        self.declare_parameter('overcome_speed_limit', 0.08)
+        self.declare_parameter('overcome_speed_limit_percentage', 80.0)
         self.declare_parameter('behavior_publish_rate_hz', 2.0)
         self.declare_parameter('avoid_replan_delay_sec', 0.25)
         self.declare_parameter('avoid_replan_cooldown_sec', 2.0)
@@ -339,13 +339,15 @@ class BehaviorManagerNode(Node):
         self.get_logger().info(f'{label} costmap cleared')
 
     def apply_overcome_speed_limit(self):
-        limit = float(self.get_parameter('overcome_speed_limit').value)
+        limit = float(
+            self.get_parameter('overcome_speed_limit_percentage').value
+        )
         msg = SpeedLimit()
         msg.header.stamp = self.get_clock().now().to_msg()
-        msg.percentage = False
-        msg.speed_limit = max(limit, 0.0)
+        msg.percentage = True
+        msg.speed_limit = min(max(limit, 0.0), 100.0)
         self.speed_limit_pub.publish(msg)
-        self.get_logger().info(f'overcome speed limit: {msg.speed_limit:.3f} m/s')
+        self.get_logger().info(f'overcome speed limit: {msg.speed_limit:.1f}%')
 
     def clear_speed_limit(self):
         msg = SpeedLimit()

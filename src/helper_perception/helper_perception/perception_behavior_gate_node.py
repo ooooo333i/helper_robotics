@@ -44,6 +44,7 @@ class PerceptionBehaviorGateNode(Node):
         self.declare_parameter('immediate_obstacle_width_m', 0.30)
         self.declare_parameter('obstacle_min_range_m', 0.05)
         self.declare_parameter('obstacle_max_range_m', 3.0)
+        self.declare_parameter('lidar_stop_distance_m', 0.20)
         self.declare_parameter('lidar_initial_stop_sec', 0.5)
         self.declare_parameter('depth_initial_stop_sec', 0.5)
         self.declare_parameter('require_stopped_before_obstacle_decision', True)
@@ -74,9 +75,11 @@ class PerceptionBehaviorGateNode(Node):
         self.last_behavior = None
         self.last_log_time = self.get_clock().now()
         self.last_obstacle_distance = math.inf
+        self.last_obstacle_range = math.inf
         self.last_dynamic_speed = math.inf
         self.tracked_obstacle = None
         self.dynamic_obstacle = False
+        self.dynamic_stop_latched = False
         self.stop_latched = False
         self.stop_latch_time = None
         self.stop_clear_start_time = None
@@ -190,20 +193,27 @@ class PerceptionBehaviorGateNode(Node):
         self.dynamic_speed_pub.publish(speed_msg)
 
     def decide_behavior(self):
-        obstacle_on_path, distance, obstacle_center = (
+        obstacle_on_path, distance, obstacle_center, obstacle_range = (
             self.has_scan_obstacle_on_path()
         )
         self.last_obstacle_distance = distance
+        self.last_obstacle_range = obstacle_range
         raw_behavior = 'run'
         if obstacle_on_path:
             self.dynamic_obstacle = self.is_dynamic_obstacle(obstacle_center)
-            if self.dynamic_obstacle:
+            if self.dynamic_obstacle or self.dynamic_stop_latched:
+                self.dynamic_stop_latched = True
+                raw_behavior = 'stop'
+            elif obstacle_range <= float(
+                self.get_parameter('lidar_stop_distance_m').value
+            ):
                 raw_behavior = 'stop'
             else:
-                raw_behavior = 'avoid'
+                raw_behavior = self.depth_behavior()
         else:
             self.tracked_obstacle = None
             self.dynamic_obstacle = False
+            self.dynamic_stop_latched = False
             self.lidar_obstacle_start_time = None
             raw_behavior = self.depth_behavior()
 
@@ -239,10 +249,8 @@ class PerceptionBehaviorGateNode(Node):
             self.depth_obstacle_start_time = None
             return self.overcome_clear_behavior(now)
 
-        if self.initial_obstacle_stop_active(
-            'depth_obstacle_start_time',
-            'depth_initial_stop_sec',
-        ):
+        if self.depth_msg.is_dynamic:
+            self.dynamic_obstacle = True
             return 'stop'
 
         height = float(self.depth_msg.height)
@@ -256,7 +264,7 @@ class PerceptionBehaviorGateNode(Node):
 
         self.overcome_active = False
         self.overcome_clear_start_time = None
-        return 'avoid'
+        return 'stop'
 
     def overcome_clear_behavior(self, now):
         if not self.overcome_active:
@@ -348,15 +356,15 @@ class PerceptionBehaviorGateNode(Node):
 
     def has_scan_obstacle_on_path(self):
         if not self.scan_is_fresh():
-            return False, math.inf, None
+            return False, math.inf, None, math.inf
 
         path_points = self.path_points_in_base_frame()
         if len(path_points) < 2:
-            return False, math.inf, None
+            return False, math.inf, None, math.inf
 
         clusters = self.scan_clusters_in_base_frame()
         if not clusters:
-            return False, math.inf, None
+            return False, math.inf, None, math.inf
 
         width = float(self.get_parameter('path_obstacle_width_m').value)
         closest = math.inf
@@ -368,14 +376,29 @@ class PerceptionBehaviorGateNode(Node):
                 closest_cluster = cluster
 
         if closest_cluster is not None and closest <= width:
-            return True, closest, closest_cluster['centroid']
+            return (
+                True,
+                closest,
+                closest_cluster['centroid'],
+                closest_cluster['min_range'],
+            )
 
         immediate_cluster = self.find_immediate_lidar_obstacle(clusters)
         if immediate_cluster is not None:
-            return True, 0.0, immediate_cluster['centroid']
+            return (
+                True,
+                0.0,
+                immediate_cluster['centroid'],
+                immediate_cluster['min_range'],
+            )
 
         centroid = closest_cluster['centroid'] if closest_cluster else None
-        return False, closest, centroid
+        obstacle_range = (
+            closest_cluster['min_range']
+            if closest_cluster is not None
+            else math.inf
+        )
+        return False, closest, centroid, obstacle_range
 
     def find_immediate_lidar_obstacle(self, clusters):
         max_range = float(
@@ -660,6 +683,11 @@ class PerceptionBehaviorGateNode(Node):
             if math.isfinite(self.last_obstacle_distance)
             else 'none'
         )
+        obstacle_range_text = (
+            f'{self.last_obstacle_range:.3f}m'
+            if math.isfinite(self.last_obstacle_range)
+            else 'none'
+        )
         speed_text = (
             f'{self.last_dynamic_speed:.3f}m/s'
             if math.isfinite(self.last_dynamic_speed)
@@ -668,6 +696,7 @@ class PerceptionBehaviorGateNode(Node):
         self.get_logger().info(
             f'behavior={behavior}, path_poses={path_size}, '
             f'path_obstacle_distance={obstacle_text}, '
+            f'obstacle_range={obstacle_range_text}, '
             f'dynamic_speed={speed_text}, '
             f'dynamic_obstacle={self.dynamic_obstacle}, '
             f'stop_latched={self.stop_latched}'
