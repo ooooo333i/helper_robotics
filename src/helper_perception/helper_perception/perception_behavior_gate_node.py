@@ -52,8 +52,8 @@ class PerceptionBehaviorGateNode(Node):
         self.declare_parameter('overcome_clear_hold_sec', 3.0)
         self.declare_parameter('dynamic_speed_threshold_mps', 0.5)
         self.declare_parameter('dynamic_match_distance_m', 0.60)
-        self.declare_parameter('dynamic_confirm_count', 3)
-        self.declare_parameter('dynamic_clear_count', 3)
+        self.declare_parameter('dynamic_confirm_count', 2)
+        self.declare_parameter('dynamic_clear_count', 2)
         self.declare_parameter('cluster_max_gap_m', 0.15)
         self.declare_parameter('cluster_min_points', 3)
         self.declare_parameter('scan_sample_step', 1)
@@ -62,7 +62,7 @@ class PerceptionBehaviorGateNode(Node):
         self.declare_parameter('stop_clear_hold_sec', 2.0)
         self.declare_parameter('stopped_linear_threshold_mps', 0.03)
         self.declare_parameter('stopped_angular_threshold_radps', 0.08)
-        self.declare_parameter('publish_rate_hz', 5.0)
+        self.declare_parameter('publish_rate_hz', 10.0)
         self.declare_parameter('publish_repeated_commands', False)
 
         self.path = None
