@@ -53,6 +53,8 @@ class PerceptionBehaviorGateNode(Node):
         self.declare_parameter('overcome_clear_hold_sec', 3.0)
         self.declare_parameter('dynamic_speed_threshold_mps', 0.5)
         self.declare_parameter('dynamic_match_distance_m', 0.60)
+        self.declare_parameter('dynamic_confirm_count', 3)
+        self.declare_parameter('dynamic_clear_count', 3)
         self.declare_parameter('cluster_max_gap_m', 0.15)
         self.declare_parameter('cluster_min_points', 3)
         self.declare_parameter('scan_sample_step', 1)
@@ -80,6 +82,8 @@ class PerceptionBehaviorGateNode(Node):
         self.tracked_obstacle = None
         self.dynamic_obstacle = False
         self.dynamic_stop_latched = False
+        self.dynamic_confirm_count = 0
+        self.dynamic_clear_count = 0
         self.depth_dynamic_stop_active = False
         self.stop_latched = False
         self.stop_latch_time = None
@@ -202,22 +206,30 @@ class PerceptionBehaviorGateNode(Node):
         raw_behavior = 'run'
         latch_stop = False
         if obstacle_on_path:
-            self.dynamic_obstacle = self.is_dynamic_obstacle(obstacle_center)
-            if self.dynamic_obstacle or self.dynamic_stop_latched:
+            if self.dynamic_stop_latched:
+                self.dynamic_obstacle = True
+                raw_behavior = 'stop'
+                latch_stop = True
+            elif self.is_dynamic_obstacle(obstacle_center):
+                self.dynamic_obstacle = True
                 self.dynamic_stop_latched = True
                 raw_behavior = 'stop'
                 latch_stop = True
             elif obstacle_range <= float(
                 self.get_parameter('lidar_stop_distance_m').value
             ):
+                self.dynamic_obstacle = False
                 raw_behavior = 'stop'
             else:
+                self.dynamic_obstacle = False
                 raw_behavior = self.depth_behavior()
                 latch_stop = self.depth_dynamic_stop_active
         else:
             self.tracked_obstacle = None
             self.dynamic_obstacle = False
             self.dynamic_stop_latched = False
+            self.dynamic_confirm_count = 0
+            self.dynamic_clear_count = 0
             self.lidar_obstacle_start_time = None
             raw_behavior = self.depth_behavior()
             latch_stop = self.depth_dynamic_stop_active
@@ -436,6 +448,7 @@ class PerceptionBehaviorGateNode(Node):
         point = self.point_in_tracking_frame(obstacle_point_base)
         if point is None:
             self.last_dynamic_speed = math.inf
+            self.reset_dynamic_counts()
             return False
 
         now = self.get_clock().now()
@@ -445,6 +458,7 @@ class PerceptionBehaviorGateNode(Node):
                 'time': now,
             }
             self.last_dynamic_speed = 0.0
+            self.reset_dynamic_counts()
             return False
 
         previous_point = self.tracked_obstacle['point']
@@ -467,6 +481,7 @@ class PerceptionBehaviorGateNode(Node):
                 'time': now,
             }
             self.last_dynamic_speed = math.inf
+            self.reset_dynamic_counts()
             return False
 
         speed = displacement / dt
@@ -478,7 +493,31 @@ class PerceptionBehaviorGateNode(Node):
         threshold = float(
             self.get_parameter('dynamic_speed_threshold_mps').value
         )
-        return speed >= threshold
+        return self.dynamic_speed_confirmed(speed >= threshold)
+
+    def dynamic_speed_confirmed(self, over_threshold):
+        confirm_limit = max(
+            int(self.get_parameter('dynamic_confirm_count').value),
+            1,
+        )
+        clear_limit = max(
+            int(self.get_parameter('dynamic_clear_count').value),
+            1,
+        )
+
+        if over_threshold:
+            self.dynamic_confirm_count += 1
+            self.dynamic_clear_count = 0
+            return self.dynamic_confirm_count >= confirm_limit
+
+        self.dynamic_clear_count += 1
+        if self.dynamic_clear_count >= clear_limit:
+            self.dynamic_confirm_count = 0
+        return False
+
+    def reset_dynamic_counts(self):
+        self.dynamic_confirm_count = 0
+        self.dynamic_clear_count = 0
 
     def point_in_tracking_frame(self, point_base):
         base_frame = self.get_parameter('base_frame').value

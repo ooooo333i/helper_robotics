@@ -26,6 +26,8 @@ perception_behavior_gate_node:
     tracking_frame: odom
     dynamic_speed_threshold_mps: 0.5
     dynamic_match_distance_m: 0.60
+    dynamic_confirm_count: 3
+    dynamic_clear_count: 3
     cluster_max_gap_m: 0.15
     cluster_min_points: 3
     scan_sample_step: 1
