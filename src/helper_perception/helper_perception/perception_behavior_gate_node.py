@@ -38,12 +38,12 @@ class PerceptionBehaviorGateNode(Node):
         self.declare_parameter('tracking_frame', 'odom')
         self.declare_parameter('path_timeout_sec', 1.0)
         self.declare_parameter('scan_timeout_sec', 0.5)
-        self.declare_parameter('path_lookahead_m', 1.0) # 주행경로 기준 전방 1m
+        self.declare_parameter('path_lookahead_m', 2.0) # 주행경로 기준 전방 2m
         self.declare_parameter('path_obstacle_width_m', 0.50)  # 주행경로 반경 0.50m
         self.declare_parameter('immediate_obstacle_range_m', 0.0)
         self.declare_parameter('immediate_obstacle_width_m', 0.30)
         self.declare_parameter('obstacle_min_range_m', 0.05)
-        self.declare_parameter('obstacle_max_range_m', 2.0)
+        self.declare_parameter('obstacle_max_range_m', 3.0)
         self.declare_parameter('lidar_initial_stop_sec', 0.5)
         self.declare_parameter('depth_initial_stop_sec', 0.5)
         self.declare_parameter('require_stopped_before_obstacle_decision', True)
@@ -200,7 +200,7 @@ class PerceptionBehaviorGateNode(Node):
             if self.dynamic_obstacle:
                 raw_behavior = 'stop'
             else:
-                raw_behavior = self.depth_behavior()
+                raw_behavior = 'avoid'
         else:
             self.tracked_obstacle = None
             self.dynamic_obstacle = False

@@ -10,12 +10,12 @@ perception_behavior_gate_node:
     base_frame: base_link
     path_timeout_sec: 1.0
     scan_timeout_sec: 0.5
-    path_lookahead_m: 1.0
+    path_lookahead_m: 2.0
     path_obstacle_width_m: 0.50
     immediate_obstacle_range_m: 0.0
     immediate_obstacle_width_m: 0.30
     obstacle_min_range_m: 0.05
-    obstacle_max_range_m: 2.0
+    obstacle_max_range_m: 3.0
     lidar_initial_stop_sec: 0.5
     depth_initial_stop_sec: 0.5
     require_stopped_before_obstacle_decision: true
