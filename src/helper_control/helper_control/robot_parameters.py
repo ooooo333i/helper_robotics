@@ -28,9 +28,9 @@ class RobotParameters:
         self.COM_WATCH_DELAY = 5
         self.USE_CMD_BRAKE_ON_STOP = True
         self.BRAKE_DELAY_SEC = 1.0
-        self.ACCEL_RPM_PER_SEC = 3000
-        self.DECEL_RPM_PER_SEC = 6000
-        self.STOP_RPM_PER_SEC = 20000
+        self.ACCEL_RPM_PER_SEC = 3000.0
+        self.DECEL_RPM_PER_SEC = 6000.0
+        self.STOP_RPM_PER_SEC = 20000.0
 
         # Motor driver
         self.SERIAL_PORT = (
