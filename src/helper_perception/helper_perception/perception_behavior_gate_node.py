@@ -45,6 +45,8 @@ class PerceptionBehaviorGateNode(Node):
         self.declare_parameter('obstacle_min_range_m', 0.05)
         self.declare_parameter('obstacle_max_range_m', 2.0)
         self.declare_parameter('lidar_initial_stop_sec', 0.5)
+        self.declare_parameter('depth_initial_stop_sec', 0.5)
+        self.declare_parameter('require_stopped_before_obstacle_decision', True)
         self.declare_parameter('depth_timeout_sec', 0.5)
         self.declare_parameter('depth_overcome_height_m', 0.10)
         self.declare_parameter('dynamic_speed_threshold_mps', 0.5)
@@ -79,6 +81,7 @@ class PerceptionBehaviorGateNode(Node):
         self.stop_clear_start_time = None
         self.stop_release_behavior = None
         self.lidar_obstacle_start_time = None
+        self.depth_obstacle_start_time = None
 
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
@@ -193,7 +196,10 @@ class PerceptionBehaviorGateNode(Node):
             self.dynamic_obstacle = self.is_dynamic_obstacle(obstacle_center)
             if self.dynamic_obstacle:
                 raw_behavior = 'stop'
-            elif self.lidar_initial_stop_active():
+            elif self.initial_obstacle_stop_active(
+                'lidar_obstacle_start_time',
+                'lidar_initial_stop_sec',
+            ):
                 raw_behavior = 'stop'
             else:
                 raw_behavior = 'avoid'
@@ -205,23 +211,40 @@ class PerceptionBehaviorGateNode(Node):
 
         return self.apply_stop_latch(raw_behavior)
 
-    def lidar_initial_stop_active(self):
+    def initial_obstacle_stop_active(self, start_attr, duration_param):
         now = self.get_clock().now()
-        if self.lidar_obstacle_start_time is None:
-            self.lidar_obstacle_start_time = now
+        start_time = getattr(self, start_attr)
+        if start_time is None:
+            setattr(self, start_attr, now)
             return True
 
-        stop_sec = float(self.get_parameter('lidar_initial_stop_sec').value)
+        stop_sec = float(self.get_parameter(duration_param).value)
         elapsed = (
-            now - self.lidar_obstacle_start_time
+            now - start_time
         ).nanoseconds / 1e9
-        return elapsed < stop_sec
+        if elapsed < stop_sec:
+            return True
+
+        require_stopped = bool(
+            self.get_parameter(
+                'require_stopped_before_obstacle_decision'
+            ).value
+        )
+        return require_stopped and not self.robot_is_stopped()
 
     def depth_behavior(self):
         if not self.depth_is_fresh():
+            self.depth_obstacle_start_time = None
             return 'run'
         if self.depth_msg is None or self.depth_msg.decision != 'obstacle':
+            self.depth_obstacle_start_time = None
             return 'run'
+
+        if self.initial_obstacle_stop_active(
+            'depth_obstacle_start_time',
+            'depth_initial_stop_sec',
+        ):
+            return 'stop'
 
         height = float(self.depth_msg.height)
         threshold = float(
