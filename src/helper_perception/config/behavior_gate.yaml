@@ -25,4 +25,4 @@ perception_behavior_gate_node:
     stopped_linear_threshold_mps: 0.03
     stopped_angular_threshold_radps: 0.08
     publish_rate_hz: 5.0
-    publish_repeated_commands: false
+    publish_repeated_commands: true

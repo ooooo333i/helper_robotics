@@ -51,7 +51,7 @@ class PerceptionBehaviorGateNode(Node):
         self.declare_parameter('stopped_linear_threshold_mps', 0.03)
         self.declare_parameter('stopped_angular_threshold_radps', 0.08)
         self.declare_parameter('publish_rate_hz', 5.0)
-        self.declare_parameter('publish_repeated_commands', False)
+        self.declare_parameter('publish_repeated_commands', True)
 
         self.path = None
         self.path_stamp = None
@@ -199,6 +199,9 @@ class PerceptionBehaviorGateNode(Node):
             now - self.stop_latch_time
         ).nanoseconds / 1e9 if self.stop_latch_time is not None else 0.0
         if held_sec < hold_sec:
+            return 'stop'
+        if raw_behavior != 'run':
+            self.stop_clear_start_time = None
             return 'stop'
         if not self.robot_is_stopped():
             self.stop_clear_start_time = None
