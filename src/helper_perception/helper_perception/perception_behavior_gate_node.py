@@ -82,12 +82,9 @@ class PerceptionBehaviorGateNode(Node):
         self.stop_clear_start_time = None
         self.stop_release_behavior = None
         self.lidar_obstacle_start_time = None
-<<<<<<< HEAD
         self.depth_obstacle_start_time = None
-=======
         self.overcome_active = False
         self.overcome_clear_start_time = None
->>>>>>> 7b09f64 (update behavior)
 
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
@@ -203,17 +200,12 @@ class PerceptionBehaviorGateNode(Node):
             self.dynamic_obstacle = self.is_dynamic_obstacle(obstacle_center)
             if self.dynamic_obstacle:
                 raw_behavior = 'stop'
-<<<<<<< HEAD
             elif self.initial_obstacle_stop_active(
                 'lidar_obstacle_start_time',
                 'lidar_initial_stop_sec',
             ):
-                raw_behavior = 'stop'
-=======
-            elif self.lidar_initial_stop_active():
                 raw_behavior = 'avoid'
                 initial_lidar_stop = True
->>>>>>> 7b09f64 (update behavior)
             else:
                 raw_behavior = 'avoid'
         else:
@@ -250,17 +242,11 @@ class PerceptionBehaviorGateNode(Node):
     def depth_behavior(self):
         now = self.get_clock().now()
         if not self.depth_is_fresh():
-<<<<<<< HEAD
             self.depth_obstacle_start_time = None
-            return 'run'
-        if self.depth_msg is None or self.depth_msg.decision != 'obstacle':
-            self.depth_obstacle_start_time = None
-            return 'run'
-=======
             return self.overcome_clear_behavior(now)
         if self.depth_msg is None or self.depth_msg.decision != 'obstacle':
+            self.depth_obstacle_start_time = None
             return self.overcome_clear_behavior(now)
->>>>>>> 7b09f64 (update behavior)
 
         if self.initial_obstacle_stop_active(
             'depth_obstacle_start_time',
