@@ -52,6 +52,9 @@ class PerceptionBehaviorGateNode(Node):
         self.declare_parameter('overcome_clear_hold_sec', 3.0)
         self.declare_parameter('dynamic_speed_threshold_mps', 0.5)
         self.declare_parameter('dynamic_match_distance_m', 0.60)
+        self.declare_parameter('ttc_stop_sec', 1.2)
+        self.declare_parameter('ttc_min_closing_speed_mps', 0.15)
+        self.declare_parameter('ttc_robot_speed_compensation', True)
         self.declare_parameter('dynamic_confirm_count', 2)
         self.declare_parameter('dynamic_clear_count', 2)
         self.declare_parameter('cluster_max_gap_m', 0.15)
@@ -77,8 +80,11 @@ class PerceptionBehaviorGateNode(Node):
         self.last_log_time = self.get_clock().now()
         self.last_obstacle_distance = math.inf
         self.last_obstacle_range = math.inf
+        self.last_ttc = math.inf
         self.last_dynamic_speed = math.inf
         self.tracked_obstacle = None
+        self.previous_obstacle_range = None
+        self.previous_obstacle_time = None
         self.dynamic_obstacle = False
         self.dynamic_stop_latched = False
         self.dynamic_confirm_count = 0
@@ -209,7 +215,7 @@ class PerceptionBehaviorGateNode(Node):
                 self.dynamic_obstacle = True
                 raw_behavior = 'stop'
                 latch_stop = True
-            elif self.is_dynamic_obstacle(obstacle_center):
+            elif self.ttc_collision_risk(obstacle_range):
                 self.dynamic_obstacle = True
                 self.dynamic_stop_latched = True
                 raw_behavior = 'stop'
@@ -220,6 +226,10 @@ class PerceptionBehaviorGateNode(Node):
                 latch_stop = self.depth_dynamic_stop_active
         else:
             self.tracked_obstacle = None
+            self.previous_obstacle_range = None
+            self.previous_obstacle_time = None
+            self.last_ttc = math.inf
+            self.last_dynamic_speed = math.inf
             self.dynamic_obstacle = False
             self.dynamic_stop_latched = False
             self.dynamic_confirm_count = 0
@@ -437,6 +447,62 @@ class PerceptionBehaviorGateNode(Node):
         if not candidates:
             return None
         return min(candidates, key=lambda cluster: cluster['min_range'])
+
+    def ttc_collision_risk(self, obstacle_range):
+        if not math.isfinite(obstacle_range):
+            self.reset_ttc_state()
+            return False
+
+        now = self.get_clock().now()
+        if self.previous_obstacle_range is None:
+            self.previous_obstacle_range = obstacle_range
+            self.previous_obstacle_time = now
+            self.last_dynamic_speed = 0.0
+            self.last_ttc = math.inf
+            self.reset_dynamic_counts()
+            return False
+
+        dt = (
+            now - self.previous_obstacle_time
+        ).nanoseconds / 1e9 if self.previous_obstacle_time is not None else 0.0
+        if dt <= 0.0:
+            self.last_dynamic_speed = 0.0
+            self.last_ttc = math.inf
+            return False
+
+        raw_closing_speed = (
+            self.previous_obstacle_range - obstacle_range
+        ) / dt
+        closing_speed = raw_closing_speed
+        if bool(self.get_parameter('ttc_robot_speed_compensation').value):
+            closing_speed -= max(self.robot_forward_speed(), 0.0)
+
+        self.previous_obstacle_range = obstacle_range
+        self.previous_obstacle_time = now
+        self.last_dynamic_speed = closing_speed
+
+        min_closing = float(
+            self.get_parameter('ttc_min_closing_speed_mps').value
+        )
+        if closing_speed < min_closing:
+            self.last_ttc = math.inf
+            return self.dynamic_speed_confirmed(False)
+
+        self.last_ttc = obstacle_range / closing_speed
+        stop_ttc = float(self.get_parameter('ttc_stop_sec').value)
+        return self.dynamic_speed_confirmed(self.last_ttc <= stop_ttc)
+
+    def reset_ttc_state(self):
+        self.previous_obstacle_range = None
+        self.previous_obstacle_time = None
+        self.last_dynamic_speed = math.inf
+        self.last_ttc = math.inf
+        self.reset_dynamic_counts()
+
+    def robot_forward_speed(self):
+        if self.odom is None:
+            return 0.0
+        return float(self.odom.twist.twist.linear.x)
 
     def is_dynamic_obstacle(self, obstacle_point_base):
         point = self.point_in_tracking_frame(obstacle_point_base)
@@ -742,11 +808,17 @@ class PerceptionBehaviorGateNode(Node):
             if math.isfinite(self.last_dynamic_speed)
             else 'none'
         )
+        ttc_text = (
+            f'{self.last_ttc:.2f}s'
+            if math.isfinite(self.last_ttc)
+            else 'none'
+        )
         self.get_logger().info(
             f'behavior={behavior}, path_poses={path_size}, '
             f'path_obstacle_distance={obstacle_text}, '
             f'obstacle_range={obstacle_range_text}, '
             f'dynamic_speed={speed_text}, '
+            f'ttc={ttc_text}, '
             f'dynamic_obstacle={self.dynamic_obstacle}, '
             f'depth_dynamic_stop={self.depth_dynamic_stop_active}, '
             f'stop_latched={self.stop_latched}'
