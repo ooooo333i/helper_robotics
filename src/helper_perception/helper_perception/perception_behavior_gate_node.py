@@ -1,10 +1,13 @@
 import math
 
 import rclpy
+from nav_msgs.msg import Odometry
 from nav_msgs.msg import Path
 from rclpy.node import Node
 from rclpy.time import Time
 from sensor_msgs.msg import LaserScan
+from std_msgs.msg import Bool
+from std_msgs.msg import Float32
 from std_msgs.msg import String
 from tf2_ros import Buffer
 from tf2_ros import TransformException
@@ -19,7 +22,16 @@ class PerceptionBehaviorGateNode(Node):
 
         self.declare_parameter('path_topic', '/plan')
         self.declare_parameter('scan_topic', '/perception/scan/filtered')
+        self.declare_parameter('odom_topic', '/control/odom')
         self.declare_parameter('behavior_cmd_topic', '/planning/behavior_cmd')
+        self.declare_parameter(
+            'dynamic_obstacle_topic',
+            '/perception/obstacle/dynamic',
+        )
+        self.declare_parameter(
+            'dynamic_speed_topic',
+            '/perception/obstacle/dynamic_speed',
+        )
         self.declare_parameter('base_frame', 'base_link')
         self.declare_parameter('tracking_frame', 'odom')
         self.declare_parameter('path_timeout_sec', 1.0)
@@ -28,11 +40,16 @@ class PerceptionBehaviorGateNode(Node):
         self.declare_parameter('path_obstacle_width_m', 0.25)  # 주행경로 반경 0.25m
         self.declare_parameter('obstacle_min_range_m', 0.05)
         self.declare_parameter('obstacle_max_range_m', 2.0)
-        self.declare_parameter('dynamic_speed_threshold_mps', 0.20)
-        self.declare_parameter('dynamic_match_distance_m', 0.35)
+        self.declare_parameter('dynamic_speed_threshold_mps', 0.08)
+        self.declare_parameter('dynamic_match_distance_m', 0.60)
         self.declare_parameter('cluster_max_gap_m', 0.15)
         self.declare_parameter('cluster_min_points', 3)
         self.declare_parameter('scan_sample_step', 1)
+        self.declare_parameter('stop_latch_enabled', True)
+        self.declare_parameter('stop_min_hold_sec', 0.8)
+        self.declare_parameter('stop_clear_hold_sec', 1.0)
+        self.declare_parameter('stopped_linear_threshold_mps', 0.03)
+        self.declare_parameter('stopped_angular_threshold_radps', 0.08)
         self.declare_parameter('publish_rate_hz', 5.0)
         self.declare_parameter('publish_repeated_commands', False)
 
@@ -40,11 +57,17 @@ class PerceptionBehaviorGateNode(Node):
         self.path_stamp = None
         self.scan = None
         self.scan_stamp = None
+        self.odom = None
+        self.odom_stamp = None
         self.last_behavior = None
         self.last_log_time = self.get_clock().now()
         self.last_obstacle_distance = math.inf
+        self.last_dynamic_speed = math.inf
         self.tracked_obstacle = None
         self.dynamic_obstacle = False
+        self.stop_latched = False
+        self.stop_latch_time = None
+        self.stop_clear_start_time = None
 
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
@@ -52,6 +75,16 @@ class PerceptionBehaviorGateNode(Node):
         self.behavior_pub = self.create_publisher(
             String,
             self.get_parameter('behavior_cmd_topic').value,
+            10,
+        )
+        self.dynamic_pub = self.create_publisher(
+            Bool,
+            self.get_parameter('dynamic_obstacle_topic').value,
+            10,
+        )
+        self.dynamic_speed_pub = self.create_publisher(
+            Float32,
+            self.get_parameter('dynamic_speed_topic').value,
             10,
         )
         self.create_subscription(
@@ -66,6 +99,12 @@ class PerceptionBehaviorGateNode(Node):
             self.scan_callback,
             10,
         )
+        self.create_subscription(
+            Odometry,
+            self.get_parameter('odom_topic').value,
+            self.odom_callback,
+            10,
+        )
 
         rate = float(self.get_parameter('publish_rate_hz').value)
         self.create_timer(1.0 / max(rate, 0.1), self.publish_behavior)
@@ -74,7 +113,10 @@ class PerceptionBehaviorGateNode(Node):
             'perception behavior gate: '
             f'path={self.get_parameter("path_topic").value}, '
             f'scan={self.get_parameter("scan_topic").value}, '
-            f'behavior_cmd={self.get_parameter("behavior_cmd_topic").value}'
+            f'odom={self.get_parameter("odom_topic").value}, '
+            f'behavior_cmd={self.get_parameter("behavior_cmd_topic").value}, '
+            f'dynamic={self.get_parameter("dynamic_obstacle_topic").value}, '
+            f'dynamic_speed={self.get_parameter("dynamic_speed_topic").value}'
         )
 
     def path_callback(self, msg):
@@ -85,12 +127,18 @@ class PerceptionBehaviorGateNode(Node):
         self.scan = msg
         self.scan_stamp = self.get_clock().now()
 
+    def odom_callback(self, msg):
+        self.odom = msg
+        self.odom_stamp = self.get_clock().now()
+
     def publish_behavior(self):
         if not self.path_is_fresh():
+            self.publish_dynamic_status()
             self.log_status('waiting_for_path')
             return
 
         behavior = self.decide_behavior()
+        self.publish_dynamic_status()
         if not self.should_publish(behavior):
             return
 
@@ -100,19 +148,103 @@ class PerceptionBehaviorGateNode(Node):
         self.last_behavior = behavior
         self.log_status(behavior)
 
+    def publish_dynamic_status(self):
+        dynamic_msg = Bool()
+        dynamic_msg.data = bool(self.dynamic_obstacle)
+        self.dynamic_pub.publish(dynamic_msg)
+
+        speed_msg = Float32()
+        speed_msg.data = (
+            float(self.last_dynamic_speed)
+            if math.isfinite(self.last_dynamic_speed)
+            else -1.0
+        )
+        self.dynamic_speed_pub.publish(speed_msg)
+
     def decide_behavior(self):
         obstacle_on_path, distance, obstacle_center = (
             self.has_scan_obstacle_on_path()
         )
         self.last_obstacle_distance = distance
+        raw_behavior = 'run'
         if obstacle_on_path:
             self.dynamic_obstacle = self.is_dynamic_obstacle(obstacle_center)
             if self.dynamic_obstacle:
-                return 'stop'
-            return 'avoid'
-        self.tracked_obstacle = None
-        self.dynamic_obstacle = False
-        return 'run'
+                raw_behavior = 'stop'
+            else:
+                raw_behavior = 'avoid'
+        else:
+            self.tracked_obstacle = None
+            self.dynamic_obstacle = False
+
+        return self.apply_stop_latch(raw_behavior)
+
+    def apply_stop_latch(self, raw_behavior):
+        if not bool(self.get_parameter('stop_latch_enabled').value):
+            return raw_behavior
+
+        now = self.get_clock().now()
+        if raw_behavior == 'stop':
+            self.stop_latched = True
+            if self.stop_latch_time is None:
+                self.stop_latch_time = now
+            self.stop_clear_start_time = None
+            return 'stop'
+
+        if not self.stop_latched:
+            return raw_behavior
+
+        hold_sec = float(self.get_parameter('stop_min_hold_sec').value)
+        held_sec = (
+            now - self.stop_latch_time
+        ).nanoseconds / 1e9 if self.stop_latch_time is not None else 0.0
+        if held_sec < hold_sec:
+            return 'stop'
+        if not self.robot_is_stopped():
+            self.stop_clear_start_time = None
+            return 'stop'
+        if not self.stop_clear_hold_satisfied(now):
+            return 'stop'
+
+        self.stop_latched = False
+        self.stop_latch_time = None
+        self.stop_clear_start_time = None
+        return raw_behavior
+
+    def stop_clear_hold_satisfied(self, now):
+        clear_hold_sec = float(
+            self.get_parameter('stop_clear_hold_sec').value
+        )
+        if clear_hold_sec <= 0.0:
+            return True
+
+        if self.stop_clear_start_time is None:
+            self.stop_clear_start_time = now
+            return False
+
+        clear_sec = (
+            now - self.stop_clear_start_time
+        ).nanoseconds / 1e9
+        return clear_sec >= clear_hold_sec
+
+    def robot_is_stopped(self):
+        if self.odom is None:
+            return False
+
+        linear = self.odom.twist.twist.linear
+        angular = self.odom.twist.twist.angular
+        linear_speed = math.hypot(linear.x, linear.y)
+        angular_speed = abs(angular.z)
+        linear_threshold = float(
+            self.get_parameter('stopped_linear_threshold_mps').value
+        )
+        angular_threshold = float(
+            self.get_parameter('stopped_angular_threshold_radps').value
+        )
+        return (
+            linear_speed <= linear_threshold
+            and angular_speed <= angular_threshold
+        )
 
     def has_scan_obstacle_on_path(self):
         if not self.scan_is_fresh():
@@ -144,6 +276,7 @@ class PerceptionBehaviorGateNode(Node):
     def is_dynamic_obstacle(self, obstacle_point_base):
         point = self.point_in_tracking_frame(obstacle_point_base)
         if point is None:
+            self.last_dynamic_speed = math.inf
             return False
 
         now = self.get_clock().now()
@@ -152,12 +285,14 @@ class PerceptionBehaviorGateNode(Node):
                 'point': point,
                 'time': now,
             }
+            self.last_dynamic_speed = 0.0
             return False
 
         previous_point = self.tracked_obstacle['point']
         previous_time = self.tracked_obstacle['time']
         dt = (now - previous_time).nanoseconds / 1e9
         if dt <= 0.0:
+            self.last_dynamic_speed = 0.0
             return False
 
         displacement = math.hypot(
@@ -172,9 +307,11 @@ class PerceptionBehaviorGateNode(Node):
                 'point': point,
                 'time': now,
             }
+            self.last_dynamic_speed = math.inf
             return False
 
         speed = displacement / dt
+        self.last_dynamic_speed = speed
         self.tracked_obstacle = {
             'point': point,
             'time': now,
@@ -394,10 +531,17 @@ class PerceptionBehaviorGateNode(Node):
             if math.isfinite(self.last_obstacle_distance)
             else 'none'
         )
+        speed_text = (
+            f'{self.last_dynamic_speed:.3f}m/s'
+            if math.isfinite(self.last_dynamic_speed)
+            else 'none'
+        )
         self.get_logger().info(
             f'behavior={behavior}, path_poses={path_size}, '
             f'path_obstacle_distance={obstacle_text}, '
-            f'dynamic_obstacle={self.dynamic_obstacle}'
+            f'dynamic_speed={speed_text}, '
+            f'dynamic_obstacle={self.dynamic_obstacle}, '
+            f'stop_latched={self.stop_latched}'
         )
 
 
