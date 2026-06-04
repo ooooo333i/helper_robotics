@@ -40,7 +40,7 @@ class PerceptionBehaviorGateNode(Node):
         self.declare_parameter('scan_timeout_sec', 0.5)
         self.declare_parameter('path_lookahead_m', 1.0) # 주행경로 기준 전방 1m
         self.declare_parameter('path_obstacle_width_m', 0.25)  # 주행경로 반경 0.25m
-        self.declare_parameter('immediate_obstacle_range_m', 0.45)
+        self.declare_parameter('immediate_obstacle_range_m', 0.0)
         self.declare_parameter('immediate_obstacle_width_m', 0.30)
         self.declare_parameter('obstacle_min_range_m', 0.05)
         self.declare_parameter('obstacle_max_range_m', 2.0)
@@ -49,6 +49,7 @@ class PerceptionBehaviorGateNode(Node):
         self.declare_parameter('require_stopped_before_obstacle_decision', True)
         self.declare_parameter('depth_timeout_sec', 0.5)
         self.declare_parameter('depth_overcome_height_m', 0.10)
+        self.declare_parameter('overcome_clear_hold_sec', 3.0)
         self.declare_parameter('dynamic_speed_threshold_mps', 0.5)
         self.declare_parameter('dynamic_match_distance_m', 0.60)
         self.declare_parameter('cluster_max_gap_m', 0.15)
@@ -81,7 +82,12 @@ class PerceptionBehaviorGateNode(Node):
         self.stop_clear_start_time = None
         self.stop_release_behavior = None
         self.lidar_obstacle_start_time = None
+<<<<<<< HEAD
         self.depth_obstacle_start_time = None
+=======
+        self.overcome_active = False
+        self.overcome_clear_start_time = None
+>>>>>>> 7b09f64 (update behavior)
 
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
@@ -192,15 +198,22 @@ class PerceptionBehaviorGateNode(Node):
         )
         self.last_obstacle_distance = distance
         raw_behavior = 'run'
+        initial_lidar_stop = False
         if obstacle_on_path:
             self.dynamic_obstacle = self.is_dynamic_obstacle(obstacle_center)
             if self.dynamic_obstacle:
                 raw_behavior = 'stop'
+<<<<<<< HEAD
             elif self.initial_obstacle_stop_active(
                 'lidar_obstacle_start_time',
                 'lidar_initial_stop_sec',
             ):
                 raw_behavior = 'stop'
+=======
+            elif self.lidar_initial_stop_active():
+                raw_behavior = 'avoid'
+                initial_lidar_stop = True
+>>>>>>> 7b09f64 (update behavior)
             else:
                 raw_behavior = 'avoid'
         else:
@@ -209,6 +222,8 @@ class PerceptionBehaviorGateNode(Node):
             self.lidar_obstacle_start_time = None
             raw_behavior = self.depth_behavior()
 
+        if initial_lidar_stop and not self.stop_latched:
+            return 'stop'
         return self.apply_stop_latch(raw_behavior)
 
     def initial_obstacle_stop_active(self, start_attr, duration_param):
@@ -233,12 +248,19 @@ class PerceptionBehaviorGateNode(Node):
         return require_stopped and not self.robot_is_stopped()
 
     def depth_behavior(self):
+        now = self.get_clock().now()
         if not self.depth_is_fresh():
+<<<<<<< HEAD
             self.depth_obstacle_start_time = None
             return 'run'
         if self.depth_msg is None or self.depth_msg.decision != 'obstacle':
             self.depth_obstacle_start_time = None
             return 'run'
+=======
+            return self.overcome_clear_behavior(now)
+        if self.depth_msg is None or self.depth_msg.decision != 'obstacle':
+            return self.overcome_clear_behavior(now)
+>>>>>>> 7b09f64 (update behavior)
 
         if self.initial_obstacle_stop_active(
             'depth_obstacle_start_time',
@@ -251,8 +273,34 @@ class PerceptionBehaviorGateNode(Node):
             self.get_parameter('depth_overcome_height_m').value
         )
         if math.isfinite(height) and height <= threshold:
+            self.overcome_active = True
+            self.overcome_clear_start_time = None
             return 'overcome'
+
+        self.overcome_active = False
+        self.overcome_clear_start_time = None
         return 'avoid'
+
+    def overcome_clear_behavior(self, now):
+        if not self.overcome_active:
+            return 'run'
+
+        if self.overcome_clear_start_time is None:
+            self.overcome_clear_start_time = now
+            return 'overcome'
+
+        clear_hold_sec = float(
+            self.get_parameter('overcome_clear_hold_sec').value
+        )
+        clear_sec = (
+            now - self.overcome_clear_start_time
+        ).nanoseconds / 1e9
+        if clear_sec < clear_hold_sec:
+            return 'overcome'
+
+        self.overcome_active = False
+        self.overcome_clear_start_time = None
+        return 'run'
 
     def apply_stop_latch(self, raw_behavior):
         if not bool(self.get_parameter('stop_latch_enabled').value):

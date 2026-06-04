@@ -12,7 +12,7 @@ perception_behavior_gate_node:
     scan_timeout_sec: 0.5
     path_lookahead_m: 1.0
     path_obstacle_width_m: 0.25
-    immediate_obstacle_range_m: 0.45
+    immediate_obstacle_range_m: 0.0
     immediate_obstacle_width_m: 0.30
     obstacle_min_range_m: 0.05
     obstacle_max_range_m: 2.0
@@ -21,6 +21,7 @@ perception_behavior_gate_node:
     require_stopped_before_obstacle_decision: true
     depth_timeout_sec: 0.5
     depth_overcome_height_m: 0.10
+    overcome_clear_hold_sec: 3.0
     tracking_frame: odom
     dynamic_speed_threshold_mps: 0.5
     dynamic_match_distance_m: 0.60
