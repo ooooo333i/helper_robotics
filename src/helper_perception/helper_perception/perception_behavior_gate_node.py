@@ -39,7 +39,7 @@ class PerceptionBehaviorGateNode(Node):
         self.declare_parameter('path_timeout_sec', 1.0)
         self.declare_parameter('scan_timeout_sec', 0.5)
         self.declare_parameter('path_lookahead_m', 1.0) # 주행경로 기준 전방 1m
-        self.declare_parameter('path_obstacle_width_m', 0.25)  # 주행경로 반경 0.25m
+        self.declare_parameter('path_obstacle_width_m', 0.50)  # 주행경로 반경 0.50m
         self.declare_parameter('immediate_obstacle_range_m', 0.0)
         self.declare_parameter('immediate_obstacle_width_m', 0.30)
         self.declare_parameter('obstacle_min_range_m', 0.05)
@@ -195,27 +195,18 @@ class PerceptionBehaviorGateNode(Node):
         )
         self.last_obstacle_distance = distance
         raw_behavior = 'run'
-        initial_lidar_stop = False
         if obstacle_on_path:
             self.dynamic_obstacle = self.is_dynamic_obstacle(obstacle_center)
             if self.dynamic_obstacle:
                 raw_behavior = 'stop'
-            elif self.initial_obstacle_stop_active(
-                'lidar_obstacle_start_time',
-                'lidar_initial_stop_sec',
-            ):
-                raw_behavior = 'avoid'
-                initial_lidar_stop = True
             else:
-                raw_behavior = 'avoid'
+                raw_behavior = self.depth_behavior()
         else:
             self.tracked_obstacle = None
             self.dynamic_obstacle = False
             self.lidar_obstacle_start_time = None
             raw_behavior = self.depth_behavior()
 
-        if initial_lidar_stop and not self.stop_latched:
-            return 'stop'
         return self.apply_stop_latch(raw_behavior)
 
     def initial_obstacle_stop_active(self, start_attr, duration_param):
