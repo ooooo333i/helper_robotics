@@ -222,7 +222,7 @@ local_costmap:
           topic: /perception/depth/obstacle_points
           sensor_frame: base_link
           max_obstacle_height: 0.60
-          min_obstacle_height: 0.03
+          min_obstacle_height: 0.04
           clearing: False
           marking: True
           data_type: "PointCloud2"

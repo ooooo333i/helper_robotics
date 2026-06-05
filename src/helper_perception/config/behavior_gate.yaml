@@ -20,7 +20,7 @@ perception_behavior_gate_node:
     depth_initial_stop_sec: 0.5
     require_stopped_before_obstacle_decision: true
     depth_timeout_sec: 0.5
-    depth_obstacle_height_m: 0.03
+    depth_obstacle_height_m: 0.04
     tracking_frame: odom
     dynamic_speed_threshold_mps: 0.5
     dynamic_match_distance_m: 0.60

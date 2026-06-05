@@ -35,7 +35,7 @@ class DepthObstacleCloudNode(Node):
         self.declare_parameter('min_valid_depth', 0.2)
         self.declare_parameter('max_valid_depth', 2.0)
         self.declare_parameter('depth_unit_scale', 0.001)
-        self.declare_parameter('min_obstacle_height_m', 0.03)
+        self.declare_parameter('min_obstacle_height_m', 0.04)
         self.declare_parameter('max_obstacle_height_m', 0.60)
         self.declare_parameter('camera_height_m', 0.272)
         self.declare_parameter('camera_pitch_deg', 36.0)

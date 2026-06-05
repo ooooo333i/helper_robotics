@@ -48,7 +48,7 @@ class PerceptionBehaviorGateNode(Node):
         self.declare_parameter('depth_initial_stop_sec', 0.5)
         self.declare_parameter('require_stopped_before_obstacle_decision', True)
         self.declare_parameter('depth_timeout_sec', 0.5)
-        self.declare_parameter('depth_obstacle_height_m', 0.03)
+        self.declare_parameter('depth_obstacle_height_m', 0.04)
         self.declare_parameter('dynamic_speed_threshold_mps', 0.5)
         self.declare_parameter('dynamic_match_distance_m', 0.60)
         self.declare_parameter('ttc_stop_sec', 1.5)
