@@ -19,4 +19,11 @@ def generate_launch_description():
             output='screen',
             parameters=[config_file],
         ),
+        Node(
+            package='helper_perception',
+            executable='depth_obstacle_cloud_node',
+            name='depth_obstacle_cloud_node',
+            output='screen',
+            parameters=[config_file],
+        ),
     ])
