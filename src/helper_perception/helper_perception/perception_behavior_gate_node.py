@@ -213,16 +213,18 @@ class PerceptionBehaviorGateNode(Node):
         raw_behavior = 'run'
         latch_stop = False
         if obstacle_on_path:
-            if self.dynamic_stop_latched:
-                self.dynamic_obstacle = True
-                raw_behavior = 'stop'
-                latch_stop = True
-            elif self.ttc_collision_risk(obstacle_range):
+            ttc_risk = self.ttc_collision_risk(obstacle_range)
+            if ttc_risk:
                 self.dynamic_obstacle = True
                 self.dynamic_stop_latched = True
                 raw_behavior = 'stop'
                 latch_stop = True
+            elif self.dynamic_stop_latched and not self.dynamic_clear_confirmed():
+                self.dynamic_obstacle = True
+                raw_behavior = 'stop'
+                latch_stop = True
             else:
+                self.dynamic_stop_latched = False
                 self.dynamic_obstacle = False
                 raw_behavior = 'avoid'
                 latch_stop = self.depth_dynamic_stop_active
@@ -598,6 +600,13 @@ class PerceptionBehaviorGateNode(Node):
         if self.dynamic_clear_count >= clear_limit:
             self.dynamic_confirm_count = 0
         return False
+
+    def dynamic_clear_confirmed(self):
+        clear_limit = max(
+            int(self.get_parameter('dynamic_clear_count').value),
+            1,
+        )
+        return self.dynamic_clear_count >= clear_limit
 
     def reset_dynamic_counts(self):
         self.dynamic_confirm_count = 0
