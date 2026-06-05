@@ -48,13 +48,15 @@ class PerceptionBehaviorGateNode(Node):
         self.declare_parameter('depth_initial_stop_sec', 0.5)
         self.declare_parameter('require_stopped_before_obstacle_decision', True)
         self.declare_parameter('depth_timeout_sec', 0.5)
-        self.declare_parameter('depth_overcome_height_m', 0.10)
-        self.declare_parameter('overcome_clear_hold_sec', 3.0)
+        self.declare_parameter('depth_obstacle_height_m', 0.03)
         self.declare_parameter('dynamic_speed_threshold_mps', 0.5)
         self.declare_parameter('dynamic_match_distance_m', 0.60)
         self.declare_parameter('ttc_stop_sec', 1.5)
         self.declare_parameter('ttc_min_closing_speed_mps', 0.10)
         self.declare_parameter('ttc_robot_speed_compensation', True)
+        self.declare_parameter('depth_ttc_stop_sec', 1.5)
+        self.declare_parameter('depth_ttc_min_closing_speed_mps', 0.10)
+        self.declare_parameter('depth_ttc_robot_speed_compensation', True)
         self.declare_parameter('dynamic_confirm_count', 1)
         self.declare_parameter('dynamic_clear_count', 2)
         self.declare_parameter('cluster_max_gap_m', 0.15)
@@ -85,6 +87,8 @@ class PerceptionBehaviorGateNode(Node):
         self.tracked_obstacle = None
         self.previous_obstacle_range = None
         self.previous_obstacle_time = None
+        self.previous_depth_distance = None
+        self.previous_depth_time = None
         self.dynamic_obstacle = False
         self.dynamic_stop_latched = False
         self.dynamic_confirm_count = 0
@@ -96,8 +100,6 @@ class PerceptionBehaviorGateNode(Node):
         self.stop_release_behavior = None
         self.lidar_obstacle_start_time = None
         self.depth_obstacle_start_time = None
-        self.overcome_active = False
-        self.overcome_clear_start_time = None
 
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
@@ -262,55 +264,77 @@ class PerceptionBehaviorGateNode(Node):
         return require_stopped and not self.robot_is_stopped()
 
     def depth_behavior(self):
-        now = self.get_clock().now()
         if not self.depth_is_fresh():
             self.depth_obstacle_start_time = None
             self.depth_dynamic_stop_active = False
-            return self.overcome_clear_behavior(now)
+            self.reset_depth_ttc_state()
+            return 'run'
         if self.depth_msg is None or self.depth_msg.decision != 'obstacle':
             self.depth_obstacle_start_time = None
             self.depth_dynamic_stop_active = False
-            return self.overcome_clear_behavior(now)
+            self.reset_depth_ttc_state()
+            return 'run'
 
-        if self.depth_msg.is_dynamic:
+        height = float(self.depth_msg.height)
+        threshold = float(
+            self.get_parameter('depth_obstacle_height_m').value
+        )
+        if not math.isfinite(height) or height < threshold:
+            self.depth_dynamic_stop_active = False
+            self.reset_depth_ttc_state()
+            return 'run'
+
+        distance = float(self.depth_msg.distance)
+        if self.depth_msg.is_dynamic or self.depth_ttc_collision_risk(distance):
             self.dynamic_obstacle = True
             self.depth_dynamic_stop_active = True
             return 'stop'
 
         self.depth_dynamic_stop_active = False
-        height = float(self.depth_msg.height)
-        threshold = float(
-            self.get_parameter('depth_overcome_height_m').value
+        return 'avoid'
+
+    def depth_ttc_collision_risk(self, distance):
+        if not math.isfinite(distance):
+            self.reset_depth_ttc_state()
+            return False
+
+        now = self.get_clock().now()
+        if self.previous_depth_distance is None:
+            self.previous_depth_distance = distance
+            self.previous_depth_time = now
+            return False
+
+        dt = (
+            now - self.previous_depth_time
+        ).nanoseconds / 1e9 if self.previous_depth_time is not None else 0.0
+        if dt <= 0.0:
+            return False
+
+        raw_closing_speed = (
+            self.previous_depth_distance - distance
+        ) / dt
+        closing_speed = raw_closing_speed
+        if bool(self.get_parameter('depth_ttc_robot_speed_compensation').value):
+            closing_speed -= max(self.robot_forward_speed(), 0.0)
+
+        self.previous_depth_distance = distance
+        self.previous_depth_time = now
+        self.last_dynamic_speed = closing_speed
+
+        min_closing = float(
+            self.get_parameter('depth_ttc_min_closing_speed_mps').value
         )
-        if math.isfinite(height) and height <= threshold:
-            self.overcome_active = True
-            self.overcome_clear_start_time = None
-            return 'overcome'
+        if closing_speed < min_closing:
+            self.last_ttc = math.inf
+            return self.dynamic_speed_confirmed(False)
 
-        self.overcome_active = False
-        self.overcome_clear_start_time = None
-        return 'stop'
+        self.last_ttc = distance / closing_speed
+        stop_ttc = float(self.get_parameter('depth_ttc_stop_sec').value)
+        return self.dynamic_speed_confirmed(self.last_ttc <= stop_ttc)
 
-    def overcome_clear_behavior(self, now):
-        if not self.overcome_active:
-            return 'run'
-
-        if self.overcome_clear_start_time is None:
-            self.overcome_clear_start_time = now
-            return 'overcome'
-
-        clear_hold_sec = float(
-            self.get_parameter('overcome_clear_hold_sec').value
-        )
-        clear_sec = (
-            now - self.overcome_clear_start_time
-        ).nanoseconds / 1e9
-        if clear_sec < clear_hold_sec:
-            return 'overcome'
-
-        self.overcome_active = False
-        self.overcome_clear_start_time = None
-        return 'run'
+    def reset_depth_ttc_state(self):
+        self.previous_depth_distance = None
+        self.previous_depth_time = None
 
     def apply_stop_latch(self, raw_behavior, latch_stop=False):
         if not bool(self.get_parameter('stop_latch_enabled').value):
