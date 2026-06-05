@@ -32,8 +32,11 @@ class BehaviorManagerNode(Node):
             'clear_global_costmap_service',
             '/global_costmap/clear_entirely_global_costmap',
         )
-        self.declare_parameter('overcome_speed_limit', 0.08)
+        self.declare_parameter('overcome_speed_limit_percentage', 80.0)
         self.declare_parameter('behavior_publish_rate_hz', 2.0)
+        self.declare_parameter('avoid_replan_delay_sec', 0.25)
+        self.declare_parameter('avoid_replan_cooldown_sec', 2.0)
+        self.declare_parameter('avoid_clear_costmaps', False)
 
         self.behavior = 'run'
         self.current_goal = None
@@ -42,6 +45,9 @@ class BehaviorManagerNode(Node):
         self.goal_pending = False
         self.paused_by_behavior = False
         self.clear_in_progress = False
+        self.restart_in_progress = False
+        self.restart_timer = None
+        self.last_avoid_replan_time = None
 
         behavior_cmd_topic = self.get_parameter('behavior_cmd_topic').value
         behavior_state_topic = self.get_parameter('behavior_state_topic').value
@@ -117,9 +123,7 @@ class BehaviorManagerNode(Node):
             self.apply_overcome_speed_limit()
             self.resume_current_goal()
         elif behavior == 'avoid':
-            self.clear_speed_limit()
-            self.clear_costmaps()
-            self.restart_current_goal()
+            self.handle_avoid()
 
     def goal_callback(self, msg):
         self.current_goal = msg
@@ -212,6 +216,11 @@ class BehaviorManagerNode(Node):
             self.get_logger().warn('avoid requested, but no goal is stored')
             return
 
+        if self.restart_in_progress:
+            self.get_logger().info('avoid replan is already in progress')
+            return
+
+        self.restart_in_progress = True
         self.goal_pending = True
         self.paused_by_behavior = False
         if self.goal_handle is not None and self.navigation_active:
@@ -219,12 +228,71 @@ class BehaviorManagerNode(Node):
             cancel_future.add_done_callback(self.restart_after_cancel_callback)
             return
 
-        self.send_goal(self.current_goal)
+        self.schedule_restart_current_goal()
 
     def restart_after_cancel_callback(self, future):
         self.navigation_active = False
+        try:
+            response = future.result()
+        except Exception as exc:
+            self.get_logger().warn(f'avoid replan cancel failed: {exc}')
+            self.schedule_restart_current_goal()
+            return
+
+        if response.goals_canceling:
+            self.get_logger().info('avoid replan: current Nav2 goal canceled')
+        else:
+            self.get_logger().warn('avoid replan: cancel request did not cancel a goal')
+
         if self.behavior != 'stop':
-            self.send_goal(self.current_goal)
+            self.schedule_restart_current_goal()
+        else:
+            self.restart_in_progress = False
+
+    def schedule_restart_current_goal(self):
+        if self.restart_timer is not None:
+            self.restart_timer.cancel()
+
+        delay = float(self.get_parameter('avoid_replan_delay_sec').value)
+        if delay <= 0.0:
+            self.send_replanned_goal()
+            return
+
+        self.restart_timer = self.create_timer(delay, self.send_replanned_goal)
+
+    def send_replanned_goal(self):
+        if self.restart_timer is not None:
+            self.restart_timer.cancel()
+            self.restart_timer = None
+
+        self.restart_in_progress = False
+        if self.behavior == 'stop':
+            return
+        if self.current_goal is None:
+            return
+
+        self.get_logger().info('avoid replan: sending current goal again')
+        self.send_goal(self.current_goal)
+
+    def handle_avoid(self):
+        self.clear_speed_limit()
+        self.resume_current_goal()
+
+    def avoid_replan_allowed(self):
+        if self.restart_in_progress:
+            self.get_logger().info('avoid replan is already in progress')
+            return False
+
+        if self.last_avoid_replan_time is None:
+            return True
+
+        cooldown = float(
+            self.get_parameter('avoid_replan_cooldown_sec').value
+        )
+        elapsed = (
+            self.get_clock().now() - self.last_avoid_replan_time
+        ).nanoseconds / 1e9
+        return elapsed >= cooldown
 
     def retry_pending_goal(self):
         if self.behavior == 'stop':
@@ -263,13 +331,15 @@ class BehaviorManagerNode(Node):
         self.get_logger().info(f'{label} costmap cleared')
 
     def apply_overcome_speed_limit(self):
-        limit = float(self.get_parameter('overcome_speed_limit').value)
+        limit = float(
+            self.get_parameter('overcome_speed_limit_percentage').value
+        )
         msg = SpeedLimit()
         msg.header.stamp = self.get_clock().now().to_msg()
-        msg.percentage = False
-        msg.speed_limit = max(limit, 0.0)
+        msg.percentage = True
+        msg.speed_limit = min(max(limit, 0.0), 100.0)
         self.speed_limit_pub.publish(msg)
-        self.get_logger().info(f'overcome speed limit: {msg.speed_limit:.3f} m/s')
+        self.get_logger().info(f'overcome speed limit: {msg.speed_limit:.1f}%')
 
     def clear_speed_limit(self):
         msg = SpeedLimit()

@@ -28,8 +28,8 @@ def generate_launch_description():
             parameters=[{
                 'input_scan_topic': '/perception/scan/raw',
                 'output_scan_topic': '/perception/scan/filtered',
-                'angle_min_deg': ParameterValue(-180.0, value_type=float),
-                'angle_max_deg': ParameterValue(180.0, value_type=float),
+                'angle_min_deg': ParameterValue(40.0, value_type=float),
+                'angle_max_deg': ParameterValue(-40.0, value_type=float),
                 'min_valid_range': ParameterValue(0.15, value_type=float),
                 'max_valid_range': ParameterValue(8.0, value_type=float),
             }],
