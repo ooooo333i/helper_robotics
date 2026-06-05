@@ -24,13 +24,13 @@ perception_behavior_gate_node:
     tracking_frame: odom
     dynamic_speed_threshold_mps: 0.5
     dynamic_match_distance_m: 0.60
-    ttc_stop_sec: 1.5
-    ttc_min_closing_speed_mps: 0.10
+    ttc_stop_sec: 1.2
+    ttc_min_closing_speed_mps: 0.20
     ttc_robot_speed_compensation: true
-    depth_ttc_stop_sec: 1.5
-    depth_ttc_min_closing_speed_mps: 0.10
+    depth_ttc_stop_sec: 1.2
+    depth_ttc_min_closing_speed_mps: 0.20
     depth_ttc_robot_speed_compensation: true
-    dynamic_confirm_count: 1
+    dynamic_confirm_count: 2
     dynamic_clear_count: 2
     cluster_max_gap_m: 0.15
     cluster_min_points: 3

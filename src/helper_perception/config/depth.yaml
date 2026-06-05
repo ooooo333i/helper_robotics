@@ -31,7 +31,7 @@ depth_obstacle_cloud_node:
     max_valid_depth: 2.0
     depth_unit_scale: 0.001
     min_obstacle_height_m: 0.04
-    max_obstacle_height_m: 0.60
+    max_obstacle_height_m: 0.30
     camera_height_m: 0.272
     camera_pitch_deg: 36.0
     camera_x_offset_m: 0.1847
