@@ -83,7 +83,6 @@ def generate_launch_description():
             parameters=[{
                 'serial_port': ParameterValue(motor_port, value_type=str),
                 'cmd_vel_topic': ParameterValue(cmd_vel_topic, value_type=str),
-                'safety_stop_enabled': False,
             }],
         ),
         IncludeLaunchDescription(
