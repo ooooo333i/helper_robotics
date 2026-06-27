@@ -6,7 +6,7 @@ depth_obstacle_detector_node:
     debug_topic: /perception/obstacle/depth_debug
     roi_apex_x_ratio: 0.5
     roi_apex_y_ratio: 0.5
-    obstacle_distance_threshold: 0.8
+    obstacle_distance_threshold: 1.0
     min_valid_depth: 0.2
     max_valid_depth: 3.0
     depth_unit_scale: 0.001

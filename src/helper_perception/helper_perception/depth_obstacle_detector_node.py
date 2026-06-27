@@ -214,9 +214,9 @@ class DepthObstacleDetectorNode(Node):
         min_valid_depth = self.get_parameter('min_valid_depth').value
         max_valid_depth = self.get_parameter('max_valid_depth').value
 
-        valid = np.isfinite(roi)
-        valid &= roi >= min_valid_depth
-        valid &= roi <= max_valid_depth
+        valid = mask & np.isfinite(depth)
+        valid &= depth >= min_valid_depth
+        valid &= depth <= max_valid_depth
         if not np.any(valid):
             return 0.0, math.inf, 0, False
 

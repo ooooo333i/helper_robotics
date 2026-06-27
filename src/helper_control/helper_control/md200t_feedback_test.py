@@ -30,6 +30,18 @@ def build_parser():
         help='Read only one MAIN_DATA PID instead of both motors.',
     )
     parser.add_argument(
+        '--return-type',
+        type=int,
+        choices=[0, 1, 2],
+        default=None,
+        help='Send RPM command with return type and print raw response.',
+    )
+    parser.add_argument(
+        '--pnt-main-data',
+        action='store_true',
+        help='Request return type 2 and parse PID 210 PNT main data.',
+    )
+    parser.add_argument(
         '--motor1-rpm',
         type=int,
         default=0,
@@ -89,6 +101,28 @@ def print_main_data(pid, data):
     )
 
 
+def print_pnt_main_data(data):
+    print(
+        'pid=210 '
+        f'motor1_rpm={data["motor1_rpm"]:6d} '
+        f'motor1_cur={data["motor1_current_raw"]:5d} '
+        f'motor1_st={data["motor1_status"]:3d} '
+        f'motor1_pos={data["motor1_position"]:10d} '
+        '| '
+        f'motor2_rpm={data["motor2_rpm"]:6d} '
+        f'motor2_cur={data["motor2_current_raw"]:5d} '
+        f'motor2_st={data["motor2_status"]:3d} '
+        f'motor2_pos={data["motor2_position"]:10d}',
+        flush=True,
+    )
+
+
+def format_hex(data):
+    if not data:
+        return '<no bytes>'
+    return ' '.join(f'{value:02X}' for value in data)
+
+
 def main():
     args = build_parser().parse_args()
     driver = MD200TDriver(
@@ -103,6 +137,8 @@ def main():
         return 1
 
     command_requested = args.motor1_rpm != 0 or args.motor2_rpm != 0
+    if args.pnt_main_data:
+        args.return_type = 2
 
     try:
         if args.initialize or command_requested:
@@ -111,12 +147,18 @@ def main():
                 print('initialize failed')
                 return 1
 
-        if command_requested:
+        if command_requested or args.return_type is not None:
             print(
                 'sending raw RPM command: '
-                f'motor1={args.motor1_rpm}, motor2={args.motor2_rpm}'
+                f'motor1={args.motor1_rpm}, motor2={args.motor2_rpm}, '
+                f'return_type={args.return_type or 0}'
             )
-            if not driver.send_rpm_command(args.motor1_rpm, args.motor2_rpm):
+            if not driver.send_rpm_command(
+                args.motor1_rpm,
+                args.motor2_rpm,
+                return_type=args.return_type or 0,
+                clear_response=args.return_type is None,
+            ):
                 print('RPM command failed')
                 return 1
         else:
@@ -125,7 +167,30 @@ def main():
         period = 1.0 / max(args.rate, 0.1)
         end_time = time.monotonic() + max(args.duration, 0.0)
         while time.monotonic() < end_time:
-            if args.pid is not None:
+            if args.pnt_main_data:
+                driver.send_rpm_command(
+                    args.motor1_rpm,
+                    args.motor2_rpm,
+                    return_type=2,
+                    clear_response=False,
+                )
+                data = driver.read_pnt_main_data_response(
+                    timeout=args.read_timeout
+                )
+                if data is None:
+                    print('pid 210 parse failed', flush=True)
+                else:
+                    print_pnt_main_data(data)
+            elif args.return_type is not None:
+                driver.send_rpm_command(
+                    args.motor1_rpm,
+                    args.motor2_rpm,
+                    return_type=args.return_type,
+                    clear_response=False,
+                )
+                raw = driver.read_raw_available(timeout=args.read_timeout)
+                print(f'raw: {format_hex(raw)}', flush=True)
+            elif args.pid is not None:
                 data = driver.read_main_data(args.pid, timeout=args.read_timeout)
                 if data is None:
                     print(f'pid {args.pid} read failed', flush=True)

@@ -32,6 +32,12 @@ class RobotParameters:
         self.DECEL_RPM_PER_SEC = 6000.0
         self.STOP_RPM_PER_SEC = 20000.0
 
+        # Motor driver feedback
+        self.FEEDBACK_ENABLED = True
+        self.FEEDBACK_READ_TIMEOUT = 0.02
+        self.FEEDBACK_TIMEOUT = 0.25
+        self.FEEDBACK_LOG_PERIOD = 1.0
+
         # Motor driver
         self.SERIAL_PORT = (
             '/dev/serial/by-id/'

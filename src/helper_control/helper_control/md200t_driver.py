@@ -37,6 +37,7 @@ class MD200TDriver:
         self.PID_COMMAND = 10
         self.PID_MAIN_DATA = 193
         self.PID_MAIN_DATA2 = 200
+        self.PID_PNT_MAIN_DATA = 210
         self.CMD_BRAKE = 4
 
     def connect(self):
@@ -112,7 +113,13 @@ class MD200TDriver:
         time.sleep(0.05)
         return self.send_param(self.PID_COMMAND, self.CMD_BRAKE, 1)
 
-    def send_rpm_command(self, left_rpm, right_rpm):
+    def send_rpm_command(
+        self,
+        left_rpm,
+        right_rpm,
+        return_type=0,
+        clear_response=True,
+    ):
         if not self.serial_port or not self.serial_port.is_open:
             return False
 
@@ -129,7 +136,11 @@ class MD200TDriver:
         motor2_bytes = struct.pack('<h', right_rpm_clamped)
 
         data_payload = (
-            bytes([1]) + motor1_bytes + bytes([1]) + motor2_bytes + bytes([0])
+            bytes([1])
+            + motor1_bytes
+            + bytes([1])
+            + motor2_bytes
+            + bytes([return_type & 0xFF])
         )
         packet_no_chk = (
             bytes([
@@ -146,11 +157,58 @@ class MD200TDriver:
         with self.lock:
             try:
                 self.serial_port.write(packet_no_chk + bytes([checksum]))
-                self.serial_port.read(self.serial_port.in_waiting)
+                if clear_response:
+                    self.serial_port.read(self.serial_port.in_waiting)
                 return True
             except Exception as exc:
                 print(f'[ERROR] RPM command send failed: {exc}')
                 return False
+
+    def read_raw_available(self, timeout=0.2):
+        if not self.serial_port or not self.serial_port.is_open:
+            return b''
+
+        deadline = time.monotonic() + max(float(timeout), 0.01)
+        data = bytearray()
+
+        with self.lock:
+            try:
+                while time.monotonic() < deadline:
+                    waiting = self.serial_port.in_waiting
+                    chunk = self.serial_port.read(waiting or 1)
+                    if chunk:
+                        data.extend(chunk)
+            except Exception as exc:
+                print(f'[ERROR] raw read failed: {exc}')
+                return b''
+
+        return bytes(data)
+
+    def read_pnt_main_data_response(self, timeout=0.2):
+        raw = self.read_raw_available(timeout=timeout)
+        return self.parse_pnt_main_data_from_raw(raw)
+
+    def parse_pnt_main_data_from_raw(self, raw):
+        packet_size = 24
+        for start in range(0, max(len(raw) - packet_size + 1, 0)):
+            packet = raw[start:start + packet_size]
+            data = self._parse_pid_response(packet, self.PID_PNT_MAIN_DATA, 18)
+            if data is None:
+                continue
+
+            return {
+                'motor1_rpm': struct.unpack('<h', data[0:2])[0],
+                'motor1_current_raw': struct.unpack('<h', data[2:4])[0],
+                'motor1_status': data[4],
+                'motor1_position': struct.unpack('<i', data[5:9])[0],
+                'motor2_rpm': struct.unpack('<h', data[9:11])[0],
+                'motor2_current_raw': struct.unpack('<h', data[11:13])[0],
+                'motor2_status': data[13],
+                'motor2_position': struct.unpack('<i', data[14:18])[0],
+                'raw': raw,
+            }
+
+        return None
 
     def read_pid_data(self, pid, expected_size, timeout=0.2):
         if not self.serial_port or not self.serial_port.is_open:

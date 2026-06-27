@@ -22,6 +22,10 @@ motor_driver_node:
     decel_rpm_per_sec: 16000.0
     use_cmd_brake_on_stop: true
     brake_delay_sec: 1.0
+    feedback_enabled: true
+    feedback_read_timeout: 0.02
+    feedback_timeout: 0.25
+    feedback_log_period: 1.0
     publish_tf: true
 
     left_forward_sign: -1

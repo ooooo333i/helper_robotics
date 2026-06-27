@@ -68,6 +68,10 @@ class MotorDriverNode(Node):
         self.target_right_rpm = 0
         self.current_left_rpm = 0
         self.current_right_rpm = 0
+        self.actual_left_rpm = 0
+        self.actual_right_rpm = 0
+        self.last_feedback_time = None
+        self.last_feedback_log_time = self.get_clock().now()
         self.last_cmd_time = self.get_clock().now()
         self.last_control_time = self.get_clock().now()
         self.pending_brake_timer = None
@@ -111,7 +115,7 @@ class MotorDriverNode(Node):
         )
         self.odom_timer = self.create_timer(
             1.0 / max(self.cfg.ODOM_PUBLISH_RATE, 1.0),
-            self.publish_open_loop_odom,
+            self.publish_odom,
         )
 
         self.get_logger().info(f'subscribing to {self.cmd_vel_topic}')
@@ -161,6 +165,16 @@ class MotorDriverNode(Node):
             self.cfg.USE_CMD_BRAKE_ON_STOP,
         )
         self.declare_parameter('brake_delay_sec', self.cfg.BRAKE_DELAY_SEC)
+        self.declare_parameter('feedback_enabled', self.cfg.FEEDBACK_ENABLED)
+        self.declare_parameter(
+            'feedback_read_timeout',
+            self.cfg.FEEDBACK_READ_TIMEOUT,
+        )
+        self.declare_parameter('feedback_timeout', self.cfg.FEEDBACK_TIMEOUT)
+        self.declare_parameter(
+            'feedback_log_period',
+            self.cfg.FEEDBACK_LOG_PERIOD,
+        )
         self.declare_parameter('left_forward_sign', self.cfg.LEFT_FORWARD_SIGN)
         self.declare_parameter(
             'right_forward_sign',
@@ -227,6 +241,18 @@ class MotorDriverNode(Node):
         )
         self.cfg.BRAKE_DELAY_SEC = float(
             self.get_parameter('brake_delay_sec').value
+        )
+        self.feedback_enabled = bool(
+            self.get_parameter('feedback_enabled').value
+        )
+        self.feedback_read_timeout = float(
+            self.get_parameter('feedback_read_timeout').value
+        )
+        self.feedback_timeout = float(
+            self.get_parameter('feedback_timeout').value
+        )
+        self.feedback_log_period = float(
+            self.get_parameter('feedback_log_period').value
         )
         self.cfg.LEFT_FORWARD_SIGN = int(
             self.get_parameter('left_forward_sign').value
@@ -345,7 +371,14 @@ class MotorDriverNode(Node):
         motor1_rpm, motor2_rpm = self._apply_motor_mapping(left_rpm, right_rpm)
         self._cancel_pending_brake()
         if self.connected:
-            self.driver.send_rpm_command(motor1_rpm, motor2_rpm)
+            self.driver.send_rpm_command(
+                motor1_rpm,
+                motor2_rpm,
+                return_type=2 if self.feedback_enabled else 0,
+                clear_response=not self.feedback_enabled,
+            )
+            if self.feedback_enabled:
+                self._read_and_update_motor_feedback()
             self.is_stopped = False
         elif self.dry_run:
             self.log_dry_run_command(motor1_rpm, motor2_rpm)
@@ -379,6 +412,58 @@ class MotorDriverNode(Node):
         motor1_rpm = int(round(left_rpm * self.cfg.LEFT_FORWARD_SIGN))
         motor2_rpm = int(round(right_rpm * self.cfg.RIGHT_FORWARD_SIGN))
         return motor1_rpm, motor2_rpm
+
+    def _feedback_to_wheel_rpm(self, motor1_rpm, motor2_rpm):
+        left_scale = self.cfg.LEFT_RPM_SCALE or 1.0
+        right_scale = self.cfg.RIGHT_RPM_SCALE or 1.0
+
+        mapped_left = (
+            float(motor1_rpm) / self.cfg.LEFT_FORWARD_SIGN / left_scale
+        )
+        mapped_right = (
+            float(motor2_rpm) / self.cfg.RIGHT_FORWARD_SIGN / right_scale
+        )
+
+        if self.cfg.SWAP_MOTORS:
+            mapped_left, mapped_right = mapped_right, mapped_left
+
+        return mapped_left, mapped_right
+
+    def _read_and_update_motor_feedback(self):
+        feedback = self.driver.read_pnt_main_data_response(
+            timeout=self.feedback_read_timeout
+        )
+        if feedback is None:
+            self.get_logger().warn(
+                'PID210 feedback read failed',
+                throttle_duration_sec=1.0,
+            )
+            return False
+
+        left_rpm, right_rpm = self._feedback_to_wheel_rpm(
+            feedback['motor1_rpm'],
+            feedback['motor2_rpm'],
+        )
+        self.actual_left_rpm = left_rpm
+        self.actual_right_rpm = right_rpm
+        self.last_feedback_time = self.get_clock().now()
+        self._log_motor_feedback(feedback, left_rpm, right_rpm)
+        return True
+
+    def _log_motor_feedback(self, feedback, left_rpm, right_rpm):
+        now = self.get_clock().now()
+        elapsed = (now - self.last_feedback_log_time).nanoseconds / 1e9
+        if elapsed < self.feedback_log_period:
+            return
+
+        self.get_logger().info(
+            'PID210 feedback: '
+            f'motor1={feedback["motor1_rpm"]}, '
+            f'motor2={feedback["motor2_rpm"]}, '
+            f'left={left_rpm:.1f}, '
+            f'right={right_rpm:.1f}'
+        )
+        self.last_feedback_log_time = now
 
     def _ramp_rpm(self, current_rpm, target_rpm, dt):
         current_rpm = float(current_rpm)
@@ -459,6 +544,8 @@ class MotorDriverNode(Node):
         self.is_stopped = True
         self.current_left_rpm = 0
         self.current_right_rpm = 0
+        self.actual_left_rpm = 0
+        self.actual_right_rpm = 0
 
     def apply_safety_gate(self, left_rpm, right_rpm):
         if not self.safety_stop_enabled:
@@ -532,17 +619,31 @@ class MotorDriverNode(Node):
         )
         self.last_dry_run_log_time = now
 
-    def publish_open_loop_odom(self):
+    def _has_fresh_feedback(self, now):
+        if not self.feedback_enabled or self.last_feedback_time is None:
+            return False
+
+        elapsed = (now - self.last_feedback_time).nanoseconds / 1e9
+        return elapsed <= max(self.feedback_timeout, 0.0)
+
+    def _get_odom_rpm_source(self, now):
+        if self._has_fresh_feedback(now):
+            return self.actual_left_rpm, self.actual_right_rpm, 'feedback'
+
+        left_cmd, right_cmd = self.apply_safety_gate(
+            self.target_left_rpm,
+            self.target_right_rpm,
+        )
+        return left_cmd, right_cmd, 'open_loop'
+
+    def publish_odom(self):
         now = self.get_clock().now()
         dt = (now - self.last_odom_time).nanoseconds / 1e9
         self.last_odom_time = now
         if dt <= 0.0:
             return
 
-        left_cmd, right_cmd = self.apply_safety_gate(
-            self.target_left_rpm,
-            self.target_right_rpm,
-        )
+        left_cmd, right_cmd, _source = self._get_odom_rpm_source(now)
         linear_v, angular_w = self.kinematics.forward_kinematics(
             left_cmd,
             right_cmd,
