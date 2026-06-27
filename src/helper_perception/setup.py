@@ -34,6 +34,7 @@ setup(
             'scan_filter_node = helper_perception.scan_filter_node:main',
             'obstacle_detector_node = helper_perception.obstacle_detector_node:main',
             'depth_obstacle_detector_node = helper_perception.depth_obstacle_detector_node:main',
+            'depth_obstacle_cloud_node = helper_perception.depth_obstacle_cloud_node:main',
             'obstacle_fusion_node = helper_perception.obstacle_fusion_node:main',
             'obstacle_action_node = helper_perception.obstacle_action_node:main',
             'perception_behavior_gate_node = helper_perception.perception_behavior_gate_node:main',

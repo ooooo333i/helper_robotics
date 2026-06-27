@@ -1,394 +1,218 @@
 # helper_navigation
 
-`helper_navigation`은 helper robot의 SLAM, map 기반 주행, Nav2 연동, behavior 제어 흐름을 담당하는
-ROS 2 navigation 패키지입니다.
+`helper_navigation`은 helper robot의 SLAM, 저장 지도 localization, Nav2 주행,
+behavior 기반 정지/재개를 연결합니다.
 
-현재 패키지는 아래 세 가지 실행 흐름을 제공합니다.
-
-```text
-1. RViz demo 주행 검증
-2. SLAM mapping
-3. 저장된 map 기반 navigation
-```
-
-## 전체 구조
-
-기본 주행 파이프라인은 아래와 같습니다.
-
-```text
-/planning/goal_pose
--> behavior_manager_node
--> Nav2 navigate_to_pose
--> /control/cmd_vel
--> velocity_smoother
--> /control/cmd_vel_smoothed
--> cmd_vel_safety_gate_node
--> /control/cmd_vel_safe
--> demo odom 또는 motor_driver_node
-```
-
-behavior 제어 흐름은 아래와 같습니다.
-
-```text
-perception / test / VDA5050 adapter
--> /planning/behavior_cmd
--> behavior_manager_node
--> /planning/behavior_state
--> cmd_vel_safety_gate_node
-```
-
-`/planning/behavior_cmd`는 외부에서 들어오는 명령이고,
-`/planning/behavior_state`는 현재 behavior 상태를 확인하기 위한 topic입니다.
-
-## 주요 노드
-
-### behavior_manager_node
-
-파일:
-
-```text
-scripts/behavior_manager_node.py
-```
-
-역할:
-
-```text
-/planning/goal_pose를 받아 Nav2 navigate_to_pose action으로 전달
-/planning/behavior_cmd를 받아 stop/run/overcome/avoid 처리
-/planning/behavior_state를 주기적으로 publish
-```
-
-지원 behavior:
-
-| Behavior | 의미 |
-|---|---|
-| `run` | 정상 주행, stop으로 멈춘 goal 재개 |
-| `stop` | Nav2 goal cancel, safety gate에서 최종 속도 0 차단 |
-| `overcome` | 낮은 speed limit 적용 후 주행 |
-| `avoid` | costmap clear 후 현재 goal 재시작 |
-
-### demo_cmd_vel_odom_node
-
-파일:
-
-```text
-scripts/demo_cmd_vel_odom_node.py
-```
-
-역할:
-
-```text
-/control/cmd_vel_safe
--> /control/odom
--> odom -> base_link TF
-```
-
-실제 모터 없이 RViz에서 로봇이 움직이는 것처럼 확인하기 위한 demo용 fake odom 노드입니다.
-실제 로봇 주행에서는 사용하지 않습니다.
-
-## Launch 파일
-
-### behavior_nav2_demo.launch.py
-
-파일:
-
-```text
-launch/behavior_nav2_demo.launch.py
-```
-
-RViz에서 behavior -> Nav2 -> cmd_vel gate 흐름을 확인하기 위한 demo launch입니다.
-
-포함 구성:
-
-```text
-robot_state_publisher
-cmd_vel_safety_gate_node
-demo_cmd_vel_odom_node
-fake_scan
-Nav2 navigation_launch.py
-behavior_manager_node
-RViz optional
-```
-
-실행:
+## 빌드
 
 ```bash
 cd ~/workspace/helper_robotics
+colcon build --symlink-install --packages-select \
+  helper_msgs helper_description helper_control helper_perception helper_navigation
 source install/setup.bash
+```
+
+## 실행 시나리오
+
+### 실제 장치 없는 Nav2 데모
+
+```bash
 ros2 launch helper_navigation behavior_nav2_demo.launch.py rviz:=true
 ```
 
-이 launch는 실제 LiDAR와 실제 motor를 사용하지 않습니다.
+fake scan과 `/control/cmd_vel_safe` 적분 odometry를 사용합니다. RViz의
+`2D Goal Pose`가 `/planning/goal_pose`로 설정되어 있으며 실제 모터는 움직이지
+않습니다.
 
-### mapping_navigation.launch.py
+### 실제 로봇 SLAM과 지도 저장
 
-파일:
-
-```text
-launch/mapping_navigation.launch.py
-```
-
-실제 로봇으로 SLAM mapping을 수행하기 위한 launch입니다.
-
-포함 구성:
-
-```text
-robot_state_publisher
-motor_driver.launch.py
-slam_toolbox online_async_launch.py
-Nav2 navigation_launch.py
-behavior_manager_node
-RViz optional
-```
-
-실행:
+USB 포트 환경을 먼저 불러온 뒤 실행합니다.
 
 ```bash
 cd ~/workspace/helper_robotics
+source /opt/ros/humble/setup.bash
 source install/setup.bash
-ros2 launch helper_navigation mapping_navigation.launch.py rviz:=true motor:=true
+source config/usb_ports.env
+
+ros2 launch helper_navigation slam_bringup.launch.py \
+  motor:=true \
+  rviz:=true
 ```
 
-모터 없이 먼저 확인할 경우:
+`slam_bringup`은 전방 LiDAR, robot description, motor/safety gate,
+SLAM Toolbox, Nav2, behavior manager를 실행합니다. 현재
+`mapping_navigation.launch.py` 자체에는 LiDAR driver가 없으므로 실기 mapping
+진입점으로는 `slam_bringup.launch.py`를 사용합니다.
+
+지도를 저장합니다.
 
 ```bash
-ros2 launch helper_navigation mapping_navigation.launch.py rviz:=true motor:=false
+ros2 run nav2_map_server map_saver_cli -f \
+  ~/workspace/helper_robotics/src/helper_navigation/maps/helper_map
 ```
 
-이 launch는 실제 입력으로 아래 topic/TF가 필요합니다.
-
-```text
-/control/odom
-/perception/scan/filtered
-odom -> base_link
-base_link -> laser_front / laser_rear
-```
-
-SLAM이 정상 동작하면 아래가 생성됩니다.
-
-```text
-/map
-map -> odom
-```
-
-지도 저장:
-
-```bash
-mkdir -p ~/workspace/helper_robotics/src/helper_navigation/maps
-ros2 run nav2_map_server map_saver_cli -f ~/workspace/helper_robotics/src/helper_navigation/maps/helper_map
-```
-
-저장 결과 예시:
-
-```text
-src/helper_navigation/maps/helper_map.yaml
-src/helper_navigation/maps/helper_map.pgm
-```
-
-### map_navigation.launch.py
-
-파일:
-
-```text
-launch/map_navigation.launch.py
-```
-
-SLAM으로 저장한 map을 불러와 주행하기 위한 launch입니다.
-
-포함 구성:
-
-```text
-robot_state_publisher
-motor_driver.launch.py
-Nav2 localization_launch.py
-Nav2 navigation_launch.py
-behavior_manager_node
-RViz optional
-```
-
-실행:
-
-```bash
-cd ~/workspace/helper_robotics
-source install/setup.bash
-ros2 launch helper_navigation map_navigation.launch.py \
-  map:=/home/jiming/workspace/helper_robotics/src/helper_navigation/maps/helper_map.yaml \
-  rviz:=true \
-  motor:=true
-```
-
-모터 없이 map load/localization만 확인할 경우:
+### 저장된 지도에서 실제 주행
 
 ```bash
 ros2 launch helper_navigation map_navigation.launch.py \
-  map:=/home/jiming/workspace/helper_robotics/src/helper_navigation/maps/helper_map.yaml \
-  rviz:=true \
-  motor:=false
+  map:=$HOME/workspace/helper_robotics/src/helper_navigation/maps/helper_map.yaml \
+  front_lidar_port:=${AMR_FRONT_LIDAR_PORT} \
+  motor_port:=${AMR_MOTOR_DRIVER_PORT} \
+  motor:=true \
+  rviz:=true
 ```
 
-`map_navigation.launch.py`는 저장된 map을 사용하므로 `map:=...` 인자가 필요합니다.
+이 launch는 전방 LiDAR, robot description, motor/safety gate, AMCL/map server,
+Nav2, behavior manager를 포함합니다. depth 인식과 자동 behavior 판단이 필요하면
+depth camera driver를 먼저 실행한 뒤 별도 터미널에서 다음을 추가합니다.
 
-## 주요 Topic
+```bash
+ros2 launch helper_perception depth_obstacle.launch.py
+ros2 launch helper_perception perception_behavior_gate.launch.py
+```
 
-### Planning / Behavior
+`perception_behavior_gate`의 기본 path 입력은 설정 파일 기준 `/local_plan`입니다.
+실행 중 실제 Nav2가 해당 topic을 발행하는지 반드시 확인하십시오.
 
-| Topic | Type | 설명 |
+`depth_obstacle.launch.py`는 두 `sensor_msgs/msg/PointCloud2`를 발행합니다.
+`/perception/depth/obstacle_points`는 local costmap의 `depth_mark`,
+`/perception/depth/clearing_points`는 `depth_clear` source로 연결됩니다.
+Depth launch를 실행하지 않으면 두 source에는 데이터가 없고 LiDAR scan만
+사용됩니다.
+
+## 전체 데이터 흐름
+
+```text
+LiDAR/depth + Nav2 local path + odom
+  -> helper_perception
+  -> /planning/behavior_cmd
+  -> behavior_manager
+       ├── NavigateToPose action 제어
+       ├── /planning/behavior_state
+       └── /speed_limit
+
+/planning/goal_pose
+  -> behavior_manager
+  -> Nav2 planner/controller
+  -> /control/cmd_vel
+  -> velocity_smoother
+  -> /control/cmd_vel_smoothed
+  -> cmd_vel_safety_gate
+  -> /control/cmd_vel_safe
+  -> motor_driver
+```
+
+TF 책임은 다음과 같습니다.
+
+```text
+map -> odom                  SLAM Toolbox 또는 AMCL
+odom -> base_link           motor_driver의 open-loop odometry
+base_link -> sensor frames  robot_state_publisher + URDF
+```
+
+## 노드별 입출력
+
+### `behavior_manager`
+
+| 구분 | 이름 | 타입 | 내용 |
+|---|---|---|---|
+| 입력 | `/planning/goal_pose` | `geometry_msgs/msg/PoseStamped` | map/odom frame 목표 pose |
+| 입력 | `/planning/behavior_cmd` | `std_msgs/msg/String` | `run`, `stop`, `overcome`, `avoid` |
+| 출력 | `/planning/behavior_state` | `std_msgs/msg/String` | 현재 behavior, 기본 2 Hz |
+| 출력 | `/speed_limit` | `nav2_msgs/msg/SpeedLimit` | `overcome`의 percentage 제한 |
+| action client | `navigate_to_pose` | `nav2_msgs/action/NavigateToPose` | Nav2 목표 전송/취소 |
+| service client | local/global clear service | `nav2_msgs/srv/ClearEntireCostmap` | costmap clear용 |
+
+현재 behavior 로직:
+
+- `run`: speed limit을 해제하고 behavior 때문에 멈춘 기존 goal을 재전송합니다.
+- `stop`: 현재 Nav2 goal을 cancel합니다. 동시에 safety gate가 최종 속도를
+  0으로 차단합니다.
+- `overcome`: 기본 80% speed limit을 발행하고 goal을 재개합니다.
+- `avoid`: speed limit을 해제하고 goal을 유지/재개합니다.
+
+코드에는 costmap clear와 goal restart 함수가 있지만 현재 `handle_avoid()`에서는
+호출하지 않습니다. 즉, 현재 `avoid`가 즉시 costmap clear/replan을 수행한다고
+가정하면 안 됩니다. 대신 LiDAR/Depth 장애물이 costmap에 표시된 상태에서 DWB
+local planner가 회피 속도를 계산하고, 기본 Nav2 BT
+`navigate_to_pose_w_replanning_and_recovery.xml`이 global path를 주기적으로
+재계산합니다.
+
+### `demo_cmd_vel_odom`
+
+| 입력 | 출력 |
+|---|---|
+| `/control/cmd_vel_safe` (`geometry_msgs/msg/Twist`) | `/control/odom` (`nav_msgs/msg/Odometry`), `odom -> base_link` TF |
+
+속도를 최대 선속도 0.35 m/s, 각속도 1.2 rad/s로 제한하고 시간 적분합니다.
+0.5초간 새 명령이 없으면 정지합니다. 데모 전용이며 실제 센서 odometry가 아닙니다.
+
+## 주요 topic
+
+| topic | 타입 | 역할 |
 |---|---|---|
-| `/planning/goal_pose` | `geometry_msgs/msg/PoseStamped` | RViz, VDA5050 adapter, ACS 변환 노드가 보내는 목표 위치 |
-| `/planning/behavior_cmd` | `std_msgs/msg/String` | perception/test/VDA5050 adapter가 보내는 behavior 명령 |
-| `/planning/behavior_state` | `std_msgs/msg/String` | 현재 behavior 상태. `run`, `stop`, `overcome`, `avoid` |
-| `/speed_limit` | `nav2_msgs/msg/SpeedLimit` | `overcome` 상태에서 Nav2 속도 제한용 |
-
-### Control
-
-| Topic | Type | 설명 |
-|---|---|---|
+| `/planning/goal_pose` | `geometry_msgs/msg/PoseStamped` | behavior manager로 보낼 목표 |
+| `/planning/behavior_cmd` | `std_msgs/msg/String` | perception/VDA5050의 behavior 요청 |
+| `/planning/behavior_state` | `std_msgs/msg/String` | 확정된 현재 behavior |
 | `/control/cmd_vel` | `geometry_msgs/msg/Twist` | Nav2 controller 출력 |
-| `/control/cmd_vel_smoothed` | `geometry_msgs/msg/Twist` | Nav2 velocity_smoother 출력 |
-| `/control/cmd_vel_safe` | `geometry_msgs/msg/Twist` | safety gate를 거친 최종 속도 명령 |
-| `/control/odom` | `nav_msgs/msg/Odometry` | 로봇 odom. demo에서는 fake, 실제에서는 encoder/odom 기반 |
+| `/control/cmd_vel_smoothed` | `geometry_msgs/msg/Twist` | velocity smoother 출력 |
+| `/control/cmd_vel_safe` | `geometry_msgs/msg/Twist` | safety gate 이후 최종 속도 |
+| `/control/odom` | `nav_msgs/msg/Odometry` | 로봇 odometry |
+| `/perception/scan/filtered` | `sensor_msgs/msg/LaserScan` | SLAM/Nav2 obstacle source |
+| `/perception/depth/obstacle_points` | `sensor_msgs/msg/PointCloud2` | local costmap의 낮은 장애물 source |
+| `/perception/depth/clearing_points` | `sensor_msgs/msg/PointCloud2` | local costmap의 Depth free-space raytracing |
+| `/map` | `nav_msgs/msg/OccupancyGrid` | SLAM 또는 map server 지도 |
 
-### Sensor / Map
-
-| Topic | Type | 설명 |
-|---|---|---|
-| `/perception/scan/filtered` | `sensor_msgs/msg/LaserScan` | Nav2/SLAM이 사용하는 최종 LiDAR scan |
-| `/map` | `nav_msgs/msg/OccupancyGrid` | SLAM 또는 map_server가 publish하는 지도 |
-| `/tf`, `/tf_static` | `tf2_msgs/msg/TFMessage` | Nav2, SLAM, RViz에서 사용하는 TF |
-
-## Behavior 테스트 명령어
-
-현재 상태 확인:
+## Behavior 수동 테스트
 
 ```bash
 ros2 topic echo /planning/behavior_state
-```
 
-stop 명령:
+ros2 topic pub --times 3 /planning/behavior_cmd \
+  std_msgs/msg/String "{data: stop}"
 
-```bash
-ros2 topic pub --times 3 /planning/behavior_cmd std_msgs/msg/String "{data: stop}"
-```
+ros2 topic pub --times 3 /planning/behavior_cmd \
+  std_msgs/msg/String "{data: run}"
 
-run 명령:
-
-```bash
-ros2 topic pub --times 3 /planning/behavior_cmd std_msgs/msg/String "{data: run}"
-```
-
-`--once`는 DDS discovery 타이밍 때문에 놓칠 수 있어 테스트 시 `--times 3`을 권장합니다.
-
-최종 안전 속도 확인:
-
-```bash
 ros2 topic echo /control/cmd_vel_safe
 ```
 
-## Nav2 설정 파일
+DDS discovery로 첫 메시지가 유실될 수 있어 테스트에서는 `--times 3`을 권장합니다.
 
-### helper_nav2_params.yaml
+## Launch 파일
 
-파일:
+| launch | 용도 |
+|---|---|
+| `behavior_nav2_demo.launch.py` | fake scan/odom을 사용한 RViz Nav2 데모 |
+| `slam_bringup.launch.py` | 전방 LiDAR를 포함한 실제 mapping 진입점 |
+| `mapping_navigation.launch.py` | motor + SLAM + Nav2; scan은 외부 제공 필요 |
+| `map_navigation.launch.py` | 전방 LiDAR + 저장 지도 AMCL + Nav2 |
+| `manual_slam_bringup.launch.py` | `/control/cmd_vel_test` 기반 수동 SLAM 시험 |
+| `nav2_fake.launch.py` | Nav2 navigation include만 제공하는 저수준 launch |
 
-```text
-config/helper_nav2_params.yaml
-```
+## 설정 파일
 
-실제 로봇용 Nav2 설정입니다.
+- `helper_nav2_params.yaml`: 실제 로봇 Nav2/AMCL/costmap/velocity smoother
+- `helper_nav2_fake_params.yaml`: demo용 Nav2 설정
+- `helper_slam_params.yaml`: SLAM Toolbox와 scan topic 설정
+- `maps/*.yaml`, `maps/*.pgm`: 저장 지도
 
-주요 설정:
+실제 local costmap은 `scan depth_mark depth_clear`를 observation source로
+사용합니다. `depth_mark`는 높이 0.05~0.30 m point를 marking하고,
+`depth_clear`는 CameraInfo가 제공하는 optical frame의 유효 depth point로
+0.2~2.0 m free space를 raytracing합니다.
+0.02 m 이상 0.05 m 미만의 낮은 물체는 costmap에서 제외하고 perception이
+`overcome`으로 처리합니다. 정적 장애물은 별도 `avoid` 명령 없이 `run`을
+유지한 상태에서 Nav2가 회피합니다. global costmap은 현재 전방 LiDAR `scan`만
+사용합니다.
 
-```text
-AMCL
-map_server
-planner_server
-controller_server
-local_costmap
-global_costmap
-velocity_smoother
-```
+## 점검 순서
 
-중요 topic/frame:
-
-```text
-scan_topic: /perception/scan/filtered
-odom_topic: /control/odom
-robot_base_frame: base_link
-global_frame: map
-```
-
-### helper_nav2_fake_params.yaml
-
-파일:
-
-```text
-config/helper_nav2_fake_params.yaml
-```
-
-RViz demo용 Nav2 설정입니다. 실제 map 없이 fake odom 기반으로 behavior/Nav2 흐름을 확인하기 위한 설정입니다.
-
-## 실제 로봇 적용 시 필요한 것
-
-실제 주행을 위해서는 아래 항목들이 준비되어야 합니다.
-
-```text
-1. 실제 /control/odom
-2. 실제 /perception/scan/filtered
-3. odom -> base_link TF
-4. base_link -> laser_front / laser_rear TF
-5. LiDAR 2개 scan merge/filter
-6. motor_driver_node가 /control/cmd_vel_safe를 받아 실제 구동
-7. SLAM map 저장 및 map 기반 localization 검증
-```
-
-LiDAR 2개는 추후 아래 흐름으로 구성하는 것을 목표로 합니다.
-
-```text
-front LiDAR
-rear LiDAR
--> scan merge/filter
--> /perception/scan/filtered
-```
-
-## VDA5050 / ACS 연동 위치
-
-VDA5050 adapter는 이 패키지의 내부 topic과 연결됩니다.
-
-```text
-ACS / VDA5050 order
--> helper_vda5050
--> /planning/goal_pose
--> behavior_manager_node
--> Nav2
-```
-
-```text
-ACS / VDA5050 instantActions
--> helper_vda5050
--> /planning/behavior_cmd
-```
-
-따라서 ACS 연동은 Nav2를 직접 대체하는 것이 아니라, 상위 명령을 helper robot 내부 planning topic으로 변환하는 adapter 역할입니다.
-
-## 현재 검증 상태
-
-현재 확인된 범위:
-
-```text
-RViz demo에서 behavior -> Nav2 -> cmd_vel_safety_gate 흐름 확인
-stop/run behavior command 확인
-/control/cmd_vel_safe 차단 확인
-mapping/map navigation launch 구조 분리
-```
-
-추가 검증 필요:
-
-```text
-실제 LiDAR scan
-실제 odom
-TF 전체 구조
-SLAM map 저장
-저장된 map 기반 localization
-실제 motor 구동
-ACS/VDA5050 실연동
+```bash
+ros2 topic echo /perception/scan/filtered --once
+ros2 topic echo /control/odom --once
+ros2 run tf2_ros tf2_echo odom base_link
+ros2 run tf2_ros tf2_echo base_link laser_front
+ros2 run tf2_ros tf2_echo map odom
+ros2 action list | grep navigate_to_pose
 ```

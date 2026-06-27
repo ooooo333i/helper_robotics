@@ -161,7 +161,16 @@
   <joint name="depth_camera_joint" type="fixed">
     <parent link="base_link"/>
     <child link="depth_camera_link"/>
-    <origin xyz="0.1847 0 0.1889" rpy="0 0.95993 0"/>
+    <origin xyz="0.1847 0 0.1889" rpy="0 0 0"/>
+  </joint>
+
+  <!-- Attach the depth-camera driver's TF tree at its camera_link root. -->
+  <link name="camera_link"/>
+
+  <joint name="depth_camera_driver_joint" type="fixed">
+    <parent link="depth_camera_link"/>
+    <child link="camera_link"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
   </joint>
 
   <!-- rgb webcam -->

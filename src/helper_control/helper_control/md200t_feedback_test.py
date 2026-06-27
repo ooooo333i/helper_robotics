@@ -23,6 +23,13 @@ def build_parser():
     parser.add_argument('--duration', type=float, default=5.0)
     parser.add_argument('--rate', type=float, default=5.0)
     parser.add_argument(
+        '--pid',
+        type=int,
+        choices=[193, 200],
+        default=None,
+        help='Read only one MAIN_DATA PID instead of both motors.',
+    )
+    parser.add_argument(
         '--motor1-rpm',
         type=int,
         default=0,
@@ -69,6 +76,19 @@ def print_feedback(feedback):
     )
 
 
+def print_main_data(pid, data):
+    print(
+        f'pid={pid} '
+        f'rpm={data["rpm"]:6d} '
+        f'ref={data["ref_rpm"]:6d} '
+        f'cur={data["current_raw"]:5d} '
+        f'out={data["control_output"]:6d} '
+        f'type={data["control_type"]} '
+        f'st={data["controller_status"]:3d}',
+        flush=True,
+    )
+
+
 def main():
     args = build_parser().parse_args()
     driver = MD200TDriver(
@@ -105,11 +125,18 @@ def main():
         period = 1.0 / max(args.rate, 0.1)
         end_time = time.monotonic() + max(args.duration, 0.0)
         while time.monotonic() < end_time:
-            feedback = driver.read_motor_feedback(timeout=args.read_timeout)
-            if feedback is None:
-                print('feedback read failed', flush=True)
+            if args.pid is not None:
+                data = driver.read_main_data(args.pid, timeout=args.read_timeout)
+                if data is None:
+                    print(f'pid {args.pid} read failed', flush=True)
+                else:
+                    print_main_data(args.pid, data)
             else:
-                print_feedback(feedback)
+                feedback = driver.read_motor_feedback(timeout=args.read_timeout)
+                if feedback is None:
+                    print('feedback read failed', flush=True)
+                else:
+                    print_feedback(feedback)
             time.sleep(period)
 
         return 0

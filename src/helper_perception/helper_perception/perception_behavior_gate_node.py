@@ -38,7 +38,7 @@ class PerceptionBehaviorGateNode(Node):
         self.declare_parameter('tracking_frame', 'odom')
         self.declare_parameter('path_timeout_sec', 1.0)
         self.declare_parameter('scan_timeout_sec', 0.5)
-        self.declare_parameter('path_lookahead_m', 2.0) # 주행경로 기준 전방 2m
+        self.declare_parameter('path_lookahead_m', 2.0)  # 주행경로 기준 전방 2m
         self.declare_parameter('path_obstacle_width_m', 0.50)  # 주행경로 반경 0.50m
         self.declare_parameter('immediate_obstacle_range_m', 0.0)
         self.declare_parameter('immediate_obstacle_width_m', 0.30)
@@ -48,14 +48,18 @@ class PerceptionBehaviorGateNode(Node):
         self.declare_parameter('depth_initial_stop_sec', 0.5)
         self.declare_parameter('require_stopped_before_obstacle_decision', True)
         self.declare_parameter('depth_timeout_sec', 0.5)
-        self.declare_parameter('depth_overcome_height_m', 0.10)
+        self.declare_parameter('depth_obstacle_height_m', 0.02)
+        self.declare_parameter('depth_overcome_height_m', 0.05)
         self.declare_parameter('overcome_clear_hold_sec', 3.0)
         self.declare_parameter('dynamic_speed_threshold_mps', 0.5)
         self.declare_parameter('dynamic_match_distance_m', 0.60)
-        self.declare_parameter('ttc_stop_sec', 1.5)
-        self.declare_parameter('ttc_min_closing_speed_mps', 0.10)
+        self.declare_parameter('ttc_stop_sec', 1.2)
+        self.declare_parameter('ttc_min_closing_speed_mps', 0.20)
         self.declare_parameter('ttc_robot_speed_compensation', True)
-        self.declare_parameter('dynamic_confirm_count', 1)
+        self.declare_parameter('depth_ttc_stop_sec', 1.2)
+        self.declare_parameter('depth_ttc_min_closing_speed_mps', 0.20)
+        self.declare_parameter('depth_ttc_robot_speed_compensation', True)
+        self.declare_parameter('dynamic_confirm_count', 2)
         self.declare_parameter('dynamic_clear_count', 2)
         self.declare_parameter('cluster_max_gap_m', 0.15)
         self.declare_parameter('cluster_min_points', 3)
@@ -85,6 +89,8 @@ class PerceptionBehaviorGateNode(Node):
         self.tracked_obstacle = None
         self.previous_obstacle_range = None
         self.previous_obstacle_time = None
+        self.previous_depth_distance = None
+        self.previous_depth_time = None
         self.dynamic_obstacle = False
         self.dynamic_stop_latched = False
         self.dynamic_confirm_count = 0
@@ -211,18 +217,20 @@ class PerceptionBehaviorGateNode(Node):
         raw_behavior = 'run'
         latch_stop = False
         if obstacle_on_path:
-            if self.dynamic_stop_latched:
-                self.dynamic_obstacle = True
-                raw_behavior = 'stop'
-                latch_stop = True
-            elif self.ttc_collision_risk(obstacle_range):
+            ttc_risk = self.ttc_collision_risk(obstacle_range)
+            if ttc_risk:
                 self.dynamic_obstacle = True
                 self.dynamic_stop_latched = True
                 raw_behavior = 'stop'
                 latch_stop = True
+            elif self.dynamic_stop_latched and not self.dynamic_clear_confirmed():
+                self.dynamic_obstacle = True
+                raw_behavior = 'stop'
+                latch_stop = True
             else:
+                self.dynamic_stop_latched = False
                 self.dynamic_obstacle = False
-                raw_behavior = 'avoid'
+                raw_behavior = 'run'
                 latch_stop = self.depth_dynamic_stop_active
         else:
             self.tracked_obstacle = None
@@ -266,30 +274,41 @@ class PerceptionBehaviorGateNode(Node):
         if not self.depth_is_fresh():
             self.depth_obstacle_start_time = None
             self.depth_dynamic_stop_active = False
+            self.reset_depth_ttc_state()
             return self.overcome_clear_behavior(now)
         if self.depth_msg is None or self.depth_msg.decision != 'obstacle':
             self.depth_obstacle_start_time = None
             self.depth_dynamic_stop_active = False
+            self.reset_depth_ttc_state()
             return self.overcome_clear_behavior(now)
 
-        if self.depth_msg.is_dynamic:
+        height = float(self.depth_msg.height)
+        threshold = float(
+            self.get_parameter('depth_obstacle_height_m').value
+        )
+        if not math.isfinite(height) or height < threshold:
+            self.depth_dynamic_stop_active = False
+            self.reset_depth_ttc_state()
+            return 'run'
+
+        distance = float(self.depth_msg.distance)
+        if self.depth_msg.is_dynamic or self.depth_ttc_collision_risk(distance):
             self.dynamic_obstacle = True
             self.depth_dynamic_stop_active = True
             return 'stop'
 
         self.depth_dynamic_stop_active = False
-        height = float(self.depth_msg.height)
-        threshold = float(
+        overcome_threshold = float(
             self.get_parameter('depth_overcome_height_m').value
         )
-        if math.isfinite(height) and height <= threshold:
+        if height < overcome_threshold:
             self.overcome_active = True
             self.overcome_clear_start_time = None
             return 'overcome'
 
         self.overcome_active = False
         self.overcome_clear_start_time = None
-        return 'stop'
+        return 'run'
 
     def overcome_clear_behavior(self, now):
         if not self.overcome_active:
@@ -311,6 +330,49 @@ class PerceptionBehaviorGateNode(Node):
         self.overcome_active = False
         self.overcome_clear_start_time = None
         return 'run'
+
+    def depth_ttc_collision_risk(self, distance):
+        if not math.isfinite(distance):
+            self.reset_depth_ttc_state()
+            return False
+
+        now = self.get_clock().now()
+        if self.previous_depth_distance is None:
+            self.previous_depth_distance = distance
+            self.previous_depth_time = now
+            return False
+
+        dt = (
+            now - self.previous_depth_time
+        ).nanoseconds / 1e9 if self.previous_depth_time is not None else 0.0
+        if dt <= 0.0:
+            return False
+
+        raw_closing_speed = (
+            self.previous_depth_distance - distance
+        ) / dt
+        closing_speed = raw_closing_speed
+        if bool(self.get_parameter('depth_ttc_robot_speed_compensation').value):
+            closing_speed -= max(self.robot_forward_speed(), 0.0)
+
+        self.previous_depth_distance = distance
+        self.previous_depth_time = now
+        self.last_dynamic_speed = closing_speed
+
+        min_closing = float(
+            self.get_parameter('depth_ttc_min_closing_speed_mps').value
+        )
+        if closing_speed < min_closing:
+            self.last_ttc = math.inf
+            return self.dynamic_speed_confirmed(False)
+
+        self.last_ttc = distance / closing_speed
+        stop_ttc = float(self.get_parameter('depth_ttc_stop_sec').value)
+        return self.dynamic_speed_confirmed(self.last_ttc <= stop_ttc)
+
+    def reset_depth_ttc_state(self):
+        self.previous_depth_distance = None
+        self.previous_depth_time = None
 
     def apply_stop_latch(self, raw_behavior, latch_stop=False):
         if not bool(self.get_parameter('stop_latch_enabled').value):
@@ -574,6 +636,13 @@ class PerceptionBehaviorGateNode(Node):
         if self.dynamic_clear_count >= clear_limit:
             self.dynamic_confirm_count = 0
         return False
+
+    def dynamic_clear_confirmed(self):
+        clear_limit = max(
+            int(self.get_parameter('dynamic_clear_count').value),
+            1,
+        )
+        return self.dynamic_clear_count >= clear_limit
 
     def reset_dynamic_counts(self):
         self.dynamic_confirm_count = 0

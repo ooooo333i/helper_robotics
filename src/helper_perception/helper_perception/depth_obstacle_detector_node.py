@@ -33,9 +33,12 @@ class DepthObstacleDetectorNode(Node):
         self.declare_parameter('max_valid_depth', 3.0)
         self.declare_parameter('depth_unit_scale', 0.001)
         self.declare_parameter('distance_percentile', 10.0)
-        self.declare_parameter('camera_height_m', 0.27)
-        self.declare_parameter('camera_pitch_deg', 45.0)
-        self.declare_parameter('height_depth_window_m', 0.08)
+        self.declare_parameter('camera_height_m', 0.1889)
+        self.declare_parameter('camera_pitch_deg', 0.0)
+        self.declare_parameter('floor_clear_height_m', 0.02)
+        self.declare_parameter('min_obstacle_pixels', 20)
+        self.declare_parameter('obstacle_confirm_frames', 3)
+        self.declare_parameter('clear_confirm_frames', 2)
         self.declare_parameter('debug_topic', '/perception/obstacle/depth_debug')
 
         input_depth_topic = self.get_parameter('input_depth_topic').value
@@ -70,6 +73,11 @@ class DepthObstacleDetectorNode(Node):
             10,
         )
         self.last_log_time = self.get_clock().now()
+        self.stable_decision = 'unknown'
+        self.stable_distance = math.inf
+        self.stable_height = 0.0
+        self.pending_decision = None
+        self.pending_count = 0
 
     def camera_info_callback(self, msg):
         self.camera_info = msg
@@ -77,7 +85,12 @@ class DepthObstacleDetectorNode(Node):
     def depth_callback(self, msg):
         depth = self.image_to_depth_meters(msg)
         if depth is None:
-            self.publish_decision('unknown', math.inf, 0.0)
+            decision, distance, height = self.stabilize_decision(
+                'unknown',
+                math.inf,
+                0.0,
+            )
+            self.publish_decision(decision, distance, height)
             return
 
         mask = self.get_roi_mask(*depth.shape[::-1])
@@ -90,40 +103,52 @@ class DepthObstacleDetectorNode(Node):
         if valid.size == 0:
             raw_depth = math.inf
             distance = math.inf
-            decision = 'unknown'
+            raw_decision = 'unknown'
             height = 0.0
-            debug = self.make_debug_text(
-                decision,
-                raw_depth,
-                distance,
-                height,
-                valid.size,
-                None,
-            )
+            candidate_count = 0
         else:
             percentile = self.get_parameter('distance_percentile').value
             percentile = min(100.0, max(0.0, percentile))
             raw_depth = float(np.percentile(valid, percentile))
-            height, ground_distance = self.estimate_obstacle_geometry(
-                depth,
-                raw_depth,
-            )
-            distance = (
-                ground_distance
-                if math.isfinite(ground_distance)
-                else raw_depth
-            )
-            threshold = self.get_parameter('obstacle_distance_threshold').value
-            decision = 'obstacle' if distance <= threshold else 'clear'
-            debug = self.make_debug_text(
-                decision,
-                raw_depth,
-                distance,
+            (
                 height,
-                valid.size,
-                valid,
+                distance,
+                candidate_count,
+                geometry_valid,
+            ) = self.estimate_obstacle_geometry(depth)
+            min_pixels = max(
+                int(self.get_parameter('min_obstacle_pixels').value),
+                1,
             )
+            if not geometry_valid:
+                raw_decision = 'unknown'
+            elif candidate_count < min_pixels:
+                raw_decision = 'clear'
+                distance = math.inf
+                height = 0.0
+            else:
+                threshold = self.get_parameter(
+                    'obstacle_distance_threshold'
+                ).value
+                raw_decision = (
+                    'obstacle' if distance <= threshold else 'clear'
+                )
 
+        decision, distance, height = self.stabilize_decision(
+            raw_decision,
+            distance,
+            height,
+        )
+        debug = self.make_debug_text(
+            raw_decision,
+            decision,
+            raw_depth,
+            distance,
+            height,
+            valid.size,
+            candidate_count,
+            valid if valid.size > 0 else None,
+        )
         self.publish_decision(decision, distance, height)
         self.publish_debug(debug)
         self.log_status(decision, distance, height, debug)
@@ -180,27 +205,25 @@ class DepthObstacleDetectorNode(Node):
         has_pos = (d1 > 0) | (d2 > 0) | (d3 > 0)
         return ~(has_neg & has_pos)
 
-    def estimate_obstacle_geometry(self, depth, distance):
-        if self.camera_info is None or not math.isfinite(distance):
-            return 0.0, math.inf
+    def estimate_obstacle_geometry(self, depth):
+        if self.camera_info is None:
+            return 0.0, math.inf, 0, False
 
         fy = float(self.camera_info.k[4])
         cy = float(self.camera_info.k[5])
         if fy == 0.0:
-            return 0.0, math.inf
+            return 0.0, math.inf, 0, False
 
         image_height, image_width = depth.shape
         mask = self.get_roi_mask(image_width, image_height)
         min_valid_depth = self.get_parameter('min_valid_depth').value
         max_valid_depth = self.get_parameter('max_valid_depth').value
-        depth_window = self.get_parameter('height_depth_window_m').value
 
-        valid = mask & np.isfinite(depth)
-        valid &= depth >= min_valid_depth
-        valid &= depth <= max_valid_depth
-        valid &= depth <= distance + depth_window
+        valid = np.isfinite(roi)
+        valid &= roi >= min_valid_depth
+        valid &= roi <= max_valid_depth
         if not np.any(valid):
-            return 0.0, math.inf
+            return 0.0, math.inf, 0, False
 
         ys, xs = np.nonzero(valid)
         z = depth[ys, xs].astype(np.float32)
@@ -213,36 +236,94 @@ class DepthObstacleDetectorNode(Node):
         ground_forward = z * math.cos(pitch) - camera_y_down * math.sin(pitch)
         height_above_floor = float(camera_height) - vertical_down
 
-        ground_forward = ground_forward[np.isfinite(ground_forward)]
-        ground_forward = ground_forward[ground_forward > 0.0]
-        ground_distance = (
-            float(np.percentile(ground_forward, 10.0))
-            if ground_forward.size > 0
-            else math.inf
+        floor_height = float(
+            self.get_parameter('floor_clear_height_m').value
         )
+        obstacle = np.isfinite(ground_forward)
+        obstacle &= np.isfinite(height_above_floor)
+        obstacle &= ground_forward > 0.0
+        obstacle &= height_above_floor >= floor_height
+        candidate_count = int(np.count_nonzero(obstacle))
+        if candidate_count == 0:
+            return 0.0, math.inf, 0, True
 
-        height_above_floor = height_above_floor[np.isfinite(height_above_floor)]
-        height_above_floor = height_above_floor[height_above_floor > 0.0]
-        if height_above_floor.size == 0:
-            return 0.0, ground_distance
+        percentile = float(
+            self.get_parameter('distance_percentile').value
+        )
+        percentile = min(100.0, max(0.0, percentile))
+        ground_distance = float(
+            np.percentile(ground_forward[obstacle], percentile)
+        )
+        obstacle_height = float(
+            np.percentile(height_above_floor[obstacle], 95.0)
+        )
+        return obstacle_height, ground_distance, candidate_count, True
 
-        return float(np.percentile(height_above_floor, 95.0)), ground_distance
+    def stabilize_decision(self, decision, distance, height):
+        if decision == 'unknown':
+            self.stable_decision = 'unknown'
+            self.stable_distance = math.inf
+            self.stable_height = 0.0
+            self.pending_decision = None
+            self.pending_count = 0
+            return (
+                self.stable_decision,
+                self.stable_distance,
+                self.stable_height,
+            )
+
+        if decision == self.stable_decision:
+            self.stable_distance = float(distance)
+            self.stable_height = float(height)
+            self.pending_decision = None
+            self.pending_count = 0
+        else:
+            if decision == self.pending_decision:
+                self.pending_count += 1
+            else:
+                self.pending_decision = decision
+                self.pending_count = 1
+
+            parameter = (
+                'obstacle_confirm_frames'
+                if decision == 'obstacle'
+                else 'clear_confirm_frames'
+            )
+            required = max(int(self.get_parameter(parameter).value), 1)
+            if self.pending_count >= required:
+                self.stable_decision = decision
+                self.stable_distance = float(distance)
+                self.stable_height = float(height)
+                self.pending_decision = None
+                self.pending_count = 0
+
+        return (
+            self.stable_decision,
+            self.stable_distance,
+            self.stable_height,
+        )
 
     def make_debug_text(
         self,
+        raw_decision,
         decision,
         raw_depth,
         distance,
         height,
         valid_count,
+        candidate_count,
         valid_depths,
     ):
         parts = [
             f'decision={decision}',
+            f'raw_decision={raw_decision}',
             f'distance_m={self.format_float(distance)}',
             f'raw_depth_m={self.format_float(raw_depth)}',
             f'height_m={self.format_float(height)}',
             f'valid_roi_pixels={valid_count}',
+            f'obstacle_candidate_pixels={candidate_count}',
+            f'pending_decision={self.pending_decision or "none"}',
+            f'pending_count={self.pending_count}',
             f'camera_height_m={self.get_parameter("camera_height_m").value:.3f}',
             f'camera_pitch_deg={self.get_parameter("camera_pitch_deg").value:.1f}',
         ]

@@ -58,32 +58,47 @@ class ObstacleFusionNode(Node):
         range_fresh = self.is_fresh(self.range_time, now)
         depth_fresh = self.is_fresh(self.depth_time, now)
         timeout_is_obstacle = self.get_parameter('timeout_is_obstacle').value
-        fresh_msgs = []
+        fresh_inputs = []
 
         if range_fresh and self.range_msg is not None:
-            fresh_msgs.append(self.range_msg)
+            fresh_inputs.append(('range', self.range_msg))
         if depth_fresh and self.depth_msg is not None:
-            fresh_msgs.append(self.depth_msg)
+            fresh_inputs.append(('depth', self.depth_msg))
 
-        if not fresh_msgs:
+        if not fresh_inputs:
             decision = 'obstacle' if timeout_is_obstacle else 'unknown'
-            distance = self.pick_distance(range_fresh, depth_fresh)
-        elif any(msg.decision == 'obstacle' for msg in fresh_msgs):
+            contributors = []
+        elif any(msg.decision == 'obstacle' for _, msg in fresh_inputs):
             decision = 'obstacle'
-            distance = self.pick_distance(range_fresh, depth_fresh)
-        elif any(msg.decision == 'unknown' for msg in fresh_msgs):
+            contributors = [
+                item for item in fresh_inputs
+                if item[1].decision == decision
+            ]
+        elif any(msg.decision == 'unknown' for _, msg in fresh_inputs):
             decision = 'unknown'
-            distance = self.pick_distance(range_fresh, depth_fresh)
+            contributors = [
+                item for item in fresh_inputs
+                if item[1].decision == decision
+            ]
         else:
             decision = 'clear'
-            distance = self.pick_distance(range_fresh, depth_fresh)
+            contributors = fresh_inputs
+
+        distance = self.pick_distance(contributors)
+        heights = [
+            float(msg.height)
+            for _, msg in contributors
+            if math.isfinite(msg.height)
+        ]
+        height = max(heights, default=0.0)
+        is_dynamic = any(msg.is_dynamic for _, msg in contributors)
 
         msg = ObstacleDecision()
         msg.obstacle_type = 'fused'
         msg.decision = decision
         msg.distance = float(distance)
-        msg.height = 0.0
-        msg.is_dynamic = False
+        msg.height = height
+        msg.is_dynamic = is_dynamic
         self.publisher.publish(msg)
 
     def is_fresh(self, stamp, now):
@@ -92,23 +107,22 @@ class ObstacleFusionNode(Node):
         timeout = self.get_parameter('input_timeout_sec').value
         return (now - stamp).nanoseconds <= int(timeout * 1_000_000_000)
 
-    def pick_distance(self, range_fresh, depth_fresh):
+    def pick_distance(self, contributors):
         prefer_range = self.get_parameter('prefer_range_distance').value
-        range_distance = (
-            self.range_msg.distance
-            if range_fresh and self.range_msg is not None
-            else math.inf
-        )
-        depth_distance = (
-            self.depth_msg.distance
-            if depth_fresh and self.depth_msg is not None
-            else math.inf
-        )
+        range_distance = math.inf
+        distances = []
+        for source, msg in contributors:
+            distance = float(msg.distance)
+            if not math.isfinite(distance):
+                continue
+            distances.append(distance)
+            if source == 'range':
+                range_distance = distance
 
         if prefer_range and math.isfinite(range_distance):
             return range_distance
-        if math.isfinite(range_distance) or math.isfinite(depth_distance):
-            return min(range_distance, depth_distance)
+        if distances:
+            return min(distances)
         return math.inf
 
 
