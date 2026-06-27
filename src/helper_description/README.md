@@ -37,7 +37,7 @@ base_link
 |---|---|---|
 | `laser_front` | `base_link` | xyz `(0.149, 0, 0.2772)`, yaw `π` |
 | `laser_rear` | `base_link` | xyz `(-0.149, 0, 0.2772)`, yaw `π` |
-| `depth_camera_link` | `base_link` | xyz `(0.1847, 0, 0.1889)`, pitch `0.95993` |
+| `depth_camera_link` | `base_link` | xyz `(0.1847, 0, 0.1889)`, 정면 장착 pitch `0` |
 | `camera_link` | `depth_camera_link` | identity; depth camera driver TF의 연결점 |
 
 `camera_depth_optical_frame`은 URDF에서 중복 발행하지 않고 depth camera driver가

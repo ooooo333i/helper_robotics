@@ -74,7 +74,7 @@ LiDAR launch는 `sllidar_ros2` 패키지가 설치되어 있어야 합니다. �
 | camera info (`sensor_msgs/msg/CameraInfo`) | `/perception/obstacle/depth_debug` (`std_msgs/msg/String`) |
 
 ROI의 유효 depth를 camera intrinsic, 높이, pitch로 바닥 좌표계에 투영합니다.
-바닥 위 높이가 기본 0.04 m 이상인 점만 장애물 후보로 남기고, 후보가 기본
+바닥 위 높이가 기본 0.02 m 이상인 점만 장애물 후보로 남기고, 후보가 기본
 20 pixel 이상이면서 전방 거리 기본 0.8 m 이내인 상태가 3 frame 연속 확인되면
 `obstacle`로 확정합니다. `clear` 전환도 기본 2 frame 확인합니다. image를
 해석할 수 없거나 CameraInfo/유효 pixel이 없으면 `unknown`입니다.
@@ -92,7 +92,7 @@ ROI의 유효 depth를 camera intrinsic, 높이, pitch로 바닥 좌표계에 �
 | depth image + camera info | `/perception/depth/clearing_points` (`sensor_msgs/msg/PointCloud2`, clearing) |
 
 ROI pixel을 3차원으로 역투영하고 카메라 pitch/offset을 적용해 `base_link`의
-`x,y,z float32` obstacle cloud로 만듭니다. 기본 0.10~0.30 m 높이만 남겨
+`x,y,z float32` obstacle cloud로 만듭니다. 기본 0.05~0.30 m 높이만 남겨
 Nav2 costmap marking에 사용합니다.
 
 같은 유효 ROI depth를 카메라 optical 좌표 `(x=오른쪽, y=아래, z=전방)`로도
@@ -104,10 +104,10 @@ costmap에는 전방 LiDAR scan만 들어갑니다.
 제거, 여러 frame 연속 확인, confidence 계산은 아직 없으므로 실제 주행 전 camera
 높이/pitch를 실측하고 빈 바닥에서 오검출 여부를 확인해야 합니다.
 
-카메라 장착값은 2026-06-03 URDF를 기준으로 detector와 cloud 모두
-`x=0.1847 m`, `height=0.1889 m`, `pitch=55°`를 사용합니다. 현재 계산은 이
-55°를 수평 기준 optical axis 하향각으로 해석하므로, 실제 장착각의 측정 기준이
-수직 기준이었다면 평평한 바닥 검증 후 보각으로 수정해야 합니다.
+카메라 장착값은 정면 장착 기준으로 detector와 cloud 모두 `x=0.1847 m`,
+`height=0.1889 m`, `pitch=0°`를 사용합니다. `camera_pitch_deg`는 수평 기준
+optical axis 하향각이므로 카메라를 다시 기울이면 URDF와 두 depth 노드의 값을
+같이 수정해야 합니다.
 
 ### `obstacle_fusion_node`
 
@@ -148,10 +148,10 @@ closing speed/TTC를 계산합니다.
 
 - 동적 장애물 또는 TTC 위험: `stop`
 - 경로 위 정적 LiDAR 장애물: costmap에 맡기고 `run`
-- depth 높이 0.04 m 미만 또는 유효하지 않음: `run`
-- depth 높이 0.04 m 이상 0.10 m 미만: 동적/TTC 위험이 아니면 `overcome`;
+- depth 높이 0.02 m 미만 또는 유효하지 않음: `run`
+- depth 높이 0.02 m 이상 0.05 m 미만: 동적/TTC 위험이 아니면 `overcome`;
   costmap에서는 제외
-- depth 높이 0.10 m 이상: costmap에 맡기고 `run`
+- depth 높이 0.05 m 이상: costmap에 맡기고 `run`
 - 장애물이 없으면: `run`
 
 stop chatter를 줄이기 위해 기본 0.8초 최소 유지와 2초 clear 확인 latch를
@@ -199,7 +199,7 @@ scan:
 depth_mark:
   /perception/depth/obstacle_points
   sensor_msgs/msg/PointCloud2
-  높이 0.10~0.30 m
+  높이 0.05~0.30 m
   marking=true, clearing=false
 
 depth_clear:

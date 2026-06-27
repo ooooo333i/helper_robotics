@@ -361,9 +361,9 @@ MQTT order가 `/planning/goal_pose`, instant action이
 - `perception_behavior_gate`는 fresh local path가 없으면 behavior를 발행하지 않습니다.
 - Depth cloud는 local costmap에 활성화되어 있지만 현재 ROI/거리/높이/sampling
   필터만 있고 cluster·여러 frame 확인·confidence 로직은 없습니다.
-- Depth marking cloud는 높이 0.10~0.30 m point를 등록하고, 별도 clearing
+- Depth marking cloud는 높이 0.05~0.30 m point를 등록하고, 별도 clearing
   cloud는 카메라 optical frame에서 free space를 raytracing합니다.
-  0.04 m 이상 0.10 m 미만은 costmap에서 제외하고 `overcome`으로 처리합니다.
+  0.02 m 이상 0.05 m 미만은 costmap에서 제외하고 `overcome`으로 처리합니다.
   정적 장애물은 behavior `run`을 유지하고 Nav2 costmap 회피에 맡깁니다.
   camera TF, 높이/pitch, false marking, 장애물 제거 후 clearing을 RViz에서
   검증한 뒤 실주행해야 합니다.

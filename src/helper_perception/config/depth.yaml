@@ -14,9 +14,9 @@ depth_obstacle_detector_node:
     depth_unit_scale: 0.001
     distance_percentile: 10.0
     camera_height_m: 0.1889
-    camera_pitch_deg: 55.0
-    # Ignore floor/noise below 4 cm, then debounce sufficiently large regions.
-    floor_clear_height_m: 0.04
+    camera_pitch_deg: 0.0
+    # Ignore floor/noise below 2 cm, then debounce sufficiently large regions.
+    floor_clear_height_m: 0.02
     min_obstacle_pixels: 20
     obstacle_confirm_frames: 3
     clear_confirm_frames: 2
@@ -35,11 +35,11 @@ depth_obstacle_cloud_node:
     min_valid_depth: 0.2
     max_valid_depth: 2.0
     depth_unit_scale: 0.001
-    # Objects below 0.10 m are handled as traversable "overcome" targets.
-    min_obstacle_height_m: 0.10
+    # Objects below 0.05 m are handled as traversable "overcome" targets.
+    min_obstacle_height_m: 0.05
     max_obstacle_height_m: 0.30
     camera_height_m: 0.1889
-    camera_pitch_deg: 55.0
+    camera_pitch_deg: 0.0
     camera_x_offset_m: 0.1847
     sample_step: 4
     max_points: 3000

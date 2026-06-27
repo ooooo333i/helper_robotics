@@ -198,10 +198,10 @@ DDS discovery로 첫 메시지가 유실될 수 있어 테스트에서는 `--tim
 - `maps/*.yaml`, `maps/*.pgm`: 저장 지도
 
 실제 local costmap은 `scan depth_mark depth_clear`를 observation source로
-사용합니다. `depth_mark`는 높이 0.10~0.30 m point를 marking하고,
+사용합니다. `depth_mark`는 높이 0.05~0.30 m point를 marking하고,
 `depth_clear`는 CameraInfo가 제공하는 optical frame의 유효 depth point로
 0.2~2.0 m free space를 raytracing합니다.
-0.04 m 이상 0.10 m 미만의 낮은 물체는 costmap에서 제외하고 perception이
+0.02 m 이상 0.05 m 미만의 낮은 물체는 costmap에서 제외하고 perception이
 `overcome`으로 처리합니다. 정적 장애물은 별도 `avoid` 명령 없이 `run`을
 유지한 상태에서 Nav2가 회피합니다. global costmap은 현재 전방 LiDAR `scan`만
 사용합니다.
