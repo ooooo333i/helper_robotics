@@ -73,10 +73,16 @@ LiDAR launch는 `sllidar_ros2` 패키지가 설치되어 있어야 합니다. �
 | depth image (`sensor_msgs/msg/Image`, `16UC1` 또는 `32FC1`) | `/perception/obstacle/depth` (`ObstacleDecision`) |
 | camera info (`sensor_msgs/msg/CameraInfo`) | `/perception/obstacle/depth_debug` (`std_msgs/msg/String`) |
 
-ROI에서 유효 depth의 설정 percentile(기본 p10)을 구합니다. camera intrinsic,
-높이, pitch를 이용해 전방 바닥 거리와 장애물 높이를 추정하고, 거리가 기본
-0.8 m 이하면 `obstacle`로 판단합니다. image를 해석할 수 없거나 유효 pixel이
-없으면 `unknown`입니다.
+ROI의 유효 depth를 camera intrinsic, 높이, pitch로 바닥 좌표계에 투영합니다.
+바닥 위 높이가 기본 0.04 m 이상인 점만 장애물 후보로 남기고, 후보가 기본
+20 pixel 이상이면서 전방 거리 기본 0.8 m 이내인 상태가 3 frame 연속 확인되면
+`obstacle`로 확정합니다. `clear` 전환도 기본 2 frame 확인합니다. image를
+해석할 수 없거나 CameraInfo/유효 pixel이 없으면 `unknown`입니다.
+
+`/perception/obstacle/depth_debug`에는 필터 전 `raw_decision`, 최종 `decision`,
+후보 pixel 수와 frame 확인 상태가 포함됩니다. 바닥 오검출 조정은
+`floor_clear_height_m`, 작은 노이즈 조정은 `min_obstacle_pixels`, 상태 전환
+지연은 `obstacle_confirm_frames`와 `clear_confirm_frames`를 사용합니다.
 
 ### `depth_obstacle_cloud_node`
 
@@ -112,7 +118,8 @@ costmap에는 전방 LiDAR scan만 들어갑니다.
 
 0.5초 이내의 fresh 입력만 사용하며 우선순위는 `obstacle > unknown > clear`입니다.
 `config/fusion.yaml`에서는 두 입력이 모두 stale이면 `unknown`을 발행하고,
-거리값은 가능하면 LiDAR 값을 우선합니다.
+최종 decision에 기여한 입력 중 거리값은 가능하면 LiDAR 값을 우선합니다.
+높이는 기여 입력의 최댓값, `is_dynamic`은 하나라도 true이면 true로 보존합니다.
 
 ### `obstacle_action_node`
 

@@ -15,7 +15,11 @@ depth_obstacle_detector_node:
     distance_percentile: 10.0
     camera_height_m: 0.1889
     camera_pitch_deg: 55.0
-    height_depth_window_m: 0.02
+    # Ignore floor/noise below 4 cm, then debounce sufficiently large regions.
+    floor_clear_height_m: 0.04
+    min_obstacle_pixels: 20
+    obstacle_confirm_frames: 3
+    clear_confirm_frames: 2
 
 depth_obstacle_cloud_node:
   ros__parameters:
