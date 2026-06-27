@@ -17,7 +17,10 @@ def generate_launch_description():
     ])
     serial_port = os.environ.get(
         'AMR_MOTOR_DRIVER_PORT',
-        os.environ.get('MOTOR_DRIVER_PORT', '/dev/ttyUSB1'),
+        os.environ.get(
+            'MOTOR_DRIVER_PORT',
+            '/dev/serial/by-id/usb-FTDI_FT232R_USB_UART_A50285BI-if00-port0',
+        ),
     )
 
     return LaunchDescription([

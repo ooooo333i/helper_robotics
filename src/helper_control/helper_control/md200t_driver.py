@@ -13,7 +13,7 @@ class MD200TDriver:
 
     def __init__(
         self,
-        port='/dev/ttyUSB0',
+        port='/dev/serial/by-id/usb-FTDI_FT232R_USB_UART_A50285BI-if00-port0',
         baudrate=57600,
         robot_id=1,
         max_rpm=4000,
@@ -35,6 +35,8 @@ class MD200TDriver:
         self.PID_MAIN_BC = 124
         self.PID_COM_WATCH_DELAY = 185
         self.PID_COMMAND = 10
+        self.PID_MAIN_DATA = 193
+        self.PID_MAIN_DATA2 = 200
         self.CMD_BRAKE = 4
 
     def connect(self):
@@ -149,6 +151,106 @@ class MD200TDriver:
             except Exception as exc:
                 print(f'[ERROR] RPM command send failed: {exc}')
                 return False
+
+    def read_pid_data(self, pid, expected_size, timeout=0.2):
+        if not self.serial_port or not self.serial_port.is_open:
+            return None
+
+        request_no_chk = bytes([
+            self.RMID,
+            self.TMID,
+            self.robot_id,
+            pid,
+            0,
+        ])
+        request = request_no_chk + bytes([
+            self._calculate_checksum(request_no_chk)
+        ])
+
+        deadline = time.monotonic() + max(float(timeout), 0.01)
+        response = bytearray()
+        expected_total = 6 + expected_size
+
+        with self.lock:
+            try:
+                self.serial_port.reset_input_buffer()
+                self.serial_port.write(request)
+
+                while time.monotonic() < deadline:
+                    chunk = self.serial_port.read(1)
+                    if not chunk:
+                        continue
+
+                    response.extend(chunk)
+                    while response and response[0] != self.TMID:
+                        response.pop(0)
+
+                    if len(response) >= 2 and response[1] != self.RMID:
+                        response.pop(0)
+                        continue
+
+                    if len(response) >= 5:
+                        data_size = response[4]
+                        expected_total = 6 + data_size
+                        if len(response) >= expected_total:
+                            packet = bytes(response[:expected_total])
+                            return self._parse_pid_response(
+                                packet,
+                                pid,
+                                expected_size,
+                            )
+            except Exception as exc:
+                print(f'[ERROR] PID read failed pid={pid}: {exc}')
+                return None
+
+        return None
+
+    def _parse_pid_response(self, packet, pid, expected_size):
+        if len(packet) < 6:
+            return None
+
+        packet_no_chk = packet[:-1]
+        checksum = packet[-1]
+        if self._calculate_checksum(packet_no_chk) != checksum:
+            return None
+
+        if packet[0] != self.TMID or packet[1] != self.RMID:
+            return None
+        if packet[2] != self.robot_id or packet[3] != pid:
+            return None
+        if packet[4] != expected_size:
+            return None
+
+        return packet[5:-1]
+
+    def read_main_data(self, pid, timeout=0.2):
+        data = self.read_pid_data(pid, 17, timeout=timeout)
+        if data is None:
+            return None
+
+        return {
+            'rpm': struct.unpack('<h', data[0:2])[0],
+            'current_raw': struct.unpack('<h', data[2:4])[0],
+            'control_type': data[4],
+            'ref_rpm': struct.unpack('<h', data[5:7])[0],
+            'control_output': struct.unpack('<h', data[7:9])[0],
+            'controller_status': data[9],
+            'position': struct.unpack('<i', data[10:14])[0],
+            'brake_output': data[14],
+            'temperature_c': data[15],
+            'status2': data[16],
+        }
+
+    def read_motor_feedback(self, timeout=0.2):
+        motor1 = self.read_main_data(self.PID_MAIN_DATA, timeout=timeout)
+        motor2 = self.read_main_data(self.PID_MAIN_DATA2, timeout=timeout)
+        if motor1 is None or motor2 is None:
+            return None
+
+        return {
+            'motor1': motor1,
+            'motor2': motor2,
+        }
 
     def stop_motor(self):
         if not self.serial_port or not self.serial_port.is_open:

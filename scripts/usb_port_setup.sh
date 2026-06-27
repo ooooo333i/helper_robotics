@@ -245,6 +245,13 @@ check_devices() {
     check_one "motor driver" "${AMR_MOTOR_DRIVER_PORT:-}" || failed=1
     check_one "depth camera" "${AMR_DEPTH_CAMERA_DEVICE:-}" || failed=1
 
+    if [[ "$failed" -eq 0 &&
+          "$(real_device "$AMR_FRONT_LIDAR_PORT")" == "$(real_device "$AMR_REAR_LIDAR_PORT")" ]]; then
+        echo
+        echo "FAIL: front lidar and rear lidar resolve to the same device"
+        failed=1
+    fi
+
     if [[ "$failed" -ne 0 ]]; then
         echo
         echo "USB port check failed."

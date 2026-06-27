@@ -14,7 +14,10 @@ def generate_launch_description():
             'rear_serial_port',
             default_value=EnvironmentVariable(
                 'AMR_REAR_LIDAR_PORT',
-                default_value='/dev/ttyUSB2',
+                default_value=(
+                    '/dev/serial/by-path/'
+                    'platform-3610000.usb-usb-0:2.1.1:1.0-port0'
+                ),
             ),
         ),
         DeclareLaunchArgument('rear_serial_baudrate', default_value='460800'),

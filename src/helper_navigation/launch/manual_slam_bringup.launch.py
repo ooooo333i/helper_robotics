@@ -2,6 +2,7 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.actions import IncludeLaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch.substitutions import EnvironmentVariable
 from launch.substitutions import LaunchConfiguration
 from launch.substitutions import PathJoinSubstitution
 from launch_ros.actions import Node
@@ -30,7 +31,13 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument(
             'front_lidar_port',
-            default_value='/dev/ttyUSB2',
+            default_value=EnvironmentVariable(
+                'AMR_FRONT_LIDAR_PORT',
+                default_value=(
+                    '/dev/serial/by-path/'
+                    'platform-3610000.usb-usb-0:2.3:1.0-port0'
+                ),
+            ),
             description='Serial port for the front SLAM LiDAR.',
         ),
         DeclareLaunchArgument(
@@ -40,7 +47,13 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             'motor_port',
-            default_value='/dev/ttyUSB1',
+            default_value=EnvironmentVariable(
+                'AMR_MOTOR_DRIVER_PORT',
+                default_value=(
+                    '/dev/serial/by-id/'
+                    'usb-FTDI_FT232R_USB_UART_A50285BI-if00-port0'
+                ),
+            ),
             description='Serial port for the motor driver.',
         ),
         DeclareLaunchArgument(

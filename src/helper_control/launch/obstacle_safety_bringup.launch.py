@@ -16,7 +16,7 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument(
             'cmd_vel_topic',
-            default_value='/control/cmd_vel',
+            default_value='/control/cmd_vel_safe',
             description='Twist topic the motor driver listens to.',
         ),
         DeclareLaunchArgument(

@@ -14,7 +14,10 @@ def generate_launch_description():
             'front_serial_port',
             default_value=EnvironmentVariable(
                 'AMR_FRONT_LIDAR_PORT',
-                default_value='/dev/ttyUSB0',
+                default_value=(
+                    '/dev/serial/by-path/'
+                    'platform-3610000.usb-usb-0:2.3:1.0-port0'
+                ),
             ),
         ),  # port
         DeclareLaunchArgument('front_serial_baudrate', default_value='460800'),  # 통신속도
