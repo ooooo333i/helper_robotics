@@ -26,8 +26,10 @@ class DepthObstacleDetectorNode(Node):
             'output_obstacle_topic',
             '/perception/obstacle/depth',
         )
-        self.declare_parameter('roi_apex_x_ratio', 0.5)
-        self.declare_parameter('roi_apex_y_ratio', 0.5)
+        self.declare_parameter('roi_x_min_ratio', 0.35)
+        self.declare_parameter('roi_x_max_ratio', 0.65)
+        self.declare_parameter('roi_y_min_ratio', 0.35)
+        self.declare_parameter('roi_y_max_ratio', 0.75)
         self.declare_parameter('obstacle_distance_threshold', 0.8)
         self.declare_parameter('min_valid_depth', 0.2)
         self.declare_parameter('max_valid_depth', 3.0)
@@ -179,31 +181,24 @@ class DepthObstacleDetectorNode(Node):
         return depth * float(scale)
 
     def get_roi_mask(self, width, height):
-        """Triangular ROI: bottom-left and bottom-right corners, apex at image center (by default)."""
-        apex_x_ratio = self.get_parameter('roi_apex_x_ratio').value
-        apex_y_ratio = self.get_parameter('roi_apex_y_ratio').value
-        apex = (
-            width * min(max(apex_x_ratio, 0.0), 1.0),
-            height * min(max(apex_y_ratio, 0.0), 1.0),
-        )
-        bottom_left = (0.0, float(height - 1))
-        bottom_right = (float(width - 1), float(height - 1))
+        x_min_ratio = self.get_parameter('roi_x_min_ratio').value
+        x_max_ratio = self.get_parameter('roi_x_max_ratio').value
+        y_min_ratio = self.get_parameter('roi_y_min_ratio').value
+        y_max_ratio = self.get_parameter('roi_y_max_ratio').value
 
-        ys, xs = np.mgrid[0:height, 0:width]
-        return self.points_in_triangle(xs, ys, bottom_left, bottom_right, apex)
+        x_min = int(width * min(max(x_min_ratio, 0.0), 1.0))
+        x_max = int(width * min(max(x_max_ratio, 0.0), 1.0))
+        y_min = int(height * min(max(y_min_ratio, 0.0), 1.0))
+        y_max = int(height * min(max(y_max_ratio, 0.0), 1.0))
 
-    @staticmethod
-    def points_in_triangle(px, py, a, b, c):
-        def sign(x1, y1, x2, y2, x3, y3):
-            return (x1 - x3) * (y2 - y3) - (x2 - x3) * (y1 - y3)
+        if x_max <= x_min:
+            x_min, x_max = 0, width
+        if y_max <= y_min:
+            y_min, y_max = 0, height
 
-        d1 = sign(px, py, a[0], a[1], b[0], b[1])
-        d2 = sign(px, py, b[0], b[1], c[0], c[1])
-        d3 = sign(px, py, c[0], c[1], a[0], a[1])
-
-        has_neg = (d1 < 0) | (d2 < 0) | (d3 < 0)
-        has_pos = (d1 > 0) | (d2 > 0) | (d3 > 0)
-        return ~(has_neg & has_pos)
+        mask = np.zeros((height, width), dtype=bool)
+        mask[y_min:y_max, x_min:x_max] = True
+        return mask
 
     def estimate_obstacle_geometry(self, depth):
         if self.camera_info is None:
