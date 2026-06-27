@@ -27,6 +27,8 @@ base_link
 ├── laser_front
 ├── laser_rear
 └── depth_camera_link
+    └── camera_link
+        └── camera_depth_optical_frame  (depth camera driver)
 ```
 
 주요 장착 위치는 다음과 같습니다.
@@ -36,6 +38,11 @@ base_link
 | `laser_front` | `base_link` | xyz `(0.149, 0, 0.2772)`, yaw `π` |
 | `laser_rear` | `base_link` | xyz `(-0.149, 0, 0.2772)`, yaw `π` |
 | `depth_camera_link` | `base_link` | xyz `(0.1847, 0, 0.1889)`, pitch `0.95993` |
+| `camera_link` | `depth_camera_link` | identity; depth camera driver TF의 연결점 |
+
+`camera_depth_optical_frame`은 URDF에서 중복 발행하지 않고 depth camera driver가
+`camera_link` 아래에 발행합니다. Depth clearing을 사용하려면 이 TF가 실제로
+연결되는지 확인해야 합니다.
 
 `map -> odom`과 `odom -> base_link`는 이 패키지가 만들지 않습니다.
 각각 SLAM/AMCL과 motor odometry가 담당합니다.
@@ -52,4 +59,5 @@ Xacro 안의 macro로 box/cylinder inertia와 좌우 구동 바퀴를 정의하�
 ros2 param get /robot_state_publisher robot_description
 ros2 run tf2_ros tf2_echo base_link laser_front
 ros2 run tf2_ros tf2_echo base_link depth_camera_link
+ros2 run tf2_ros tf2_echo base_link camera_depth_optical_frame
 ```

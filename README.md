@@ -53,7 +53,8 @@ Depth는 behavior 판단과 별개로 낮은 장애물 point cloud를 local cost
 ```text
 Depth Image + CameraInfo
   -> depth_obstacle_cloud_node
-  -> /perception/depth/obstacle_points (PointCloud2)
+       ├─ /perception/depth/obstacle_points (marking PointCloud2)
+       └─ /perception/depth/clearing_points (clearing PointCloud2)
   -> Nav2 local costmap VoxelLayer
 ```
 
@@ -308,12 +309,14 @@ ros2 launch helper_perception perception_behavior_gate.launch.py
 ros2 topic info /local_plan -v
 ```
 
-`depth_obstacle.launch.py`는 장애물 판단과 함께 PointCloud2를 발행합니다. 실제
-Nav2 local costmap은 이 topic을 `depth_cloud` source로 사용하므로 다음도
-확인합니다.
+`depth_obstacle.launch.py`는 장애물 판단과 함께 marking/clearing PointCloud2를
+발행합니다. 실제 Nav2 local costmap은 두 topic을 각각 `depth_mark`,
+`depth_clear` source로 사용하므로 다음을 확인합니다.
 
 ```bash
 ros2 topic echo /perception/depth/obstacle_points --once
+ros2 topic echo /perception/depth/clearing_points --once
+ros2 run tf2_ros tf2_echo base_link camera_depth_optical_frame
 ```
 
 ### VDA5050 관제 입력을 함께 쓸 때
@@ -334,6 +337,7 @@ MQTT order가 `/planning/goal_pose`, instant action이
 | `/perception/scan/filtered` | `sensor_msgs/msg/LaserScan` | LiDAR filter → SLAM/Nav2/behavior gate |
 | `/perception/obstacle/depth` | `helper_msgs/msg/ObstacleDecision` | depth detector → fusion/behavior gate |
 | `/perception/depth/obstacle_points` | `sensor_msgs/msg/PointCloud2` | depth cloud → Nav2 local costmap |
+| `/perception/depth/clearing_points` | `sensor_msgs/msg/PointCloud2` | valid depth → local costmap clearing |
 | `/planning/goal_pose` | `geometry_msgs/msg/PoseStamped` | RViz/VDA5050 → behavior manager |
 | `/planning/behavior_cmd` | `std_msgs/msg/String` | perception/VDA5050 → behavior manager |
 | `/planning/behavior_state` | `std_msgs/msg/String` | behavior manager → safety gate/VDA5050 |
@@ -357,8 +361,12 @@ MQTT order가 `/planning/goal_pose`, instant action이
 - `perception_behavior_gate`는 fresh local path가 없으면 behavior를 발행하지 않습니다.
 - Depth cloud는 local costmap에 활성화되어 있지만 현재 ROI/거리/높이/sampling
   필터만 있고 cluster·여러 frame 확인·confidence 로직은 없습니다.
-- Depth cloud는 높이 0.04~0.30 m point를 marking하며 clearing은 비활성입니다.
-  camera 높이/pitch와 false marking을 RViz에서 검증한 뒤 실주행해야 합니다.
+- Depth marking cloud는 높이 0.10~0.30 m point를 등록하고, 별도 clearing
+  cloud는 카메라 optical frame에서 free space를 raytracing합니다.
+  0.04 m 이상 0.10 m 미만은 costmap에서 제외하고 `overcome`으로 처리합니다.
+  정적 장애물은 behavior `run`을 유지하고 Nav2 costmap 회피에 맡깁니다.
+  camera TF, 높이/pitch, false marking, 장애물 제거 후 clearing을 RViz에서
+  검증한 뒤 실주행해야 합니다.
 
 ## 테스트
 

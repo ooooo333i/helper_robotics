@@ -35,8 +35,8 @@ class DepthObstacleDetectorNode(Node):
         self.declare_parameter('max_valid_depth', 3.0)
         self.declare_parameter('depth_unit_scale', 0.001)
         self.declare_parameter('distance_percentile', 10.0)
-        self.declare_parameter('camera_height_m', 0.27)
-        self.declare_parameter('camera_pitch_deg', 45.0)
+        self.declare_parameter('camera_height_m', 0.1889)
+        self.declare_parameter('camera_pitch_deg', 55.0)
         self.declare_parameter('height_depth_window_m', 0.08)
         self.declare_parameter('debug_topic', '/perception/obstacle/depth_debug')
 
@@ -183,7 +183,6 @@ class DepthObstacleDetectorNode(Node):
 
         fx = float(self.camera_info.k[0])
         fy = float(self.camera_info.k[4])
-        cx = float(self.camera_info.k[2])
         cy = float(self.camera_info.k[5])
         if fx == 0.0 or fy == 0.0:
             return 0.0, math.inf

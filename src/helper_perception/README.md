@@ -82,19 +82,26 @@ ROI에서 유효 depth의 설정 percentile(기본 p10)을 구합니다. camera 
 
 | 입력 | 출력 |
 |---|---|
-| depth image + camera info | `/perception/depth/obstacle_points` (`sensor_msgs/msg/PointCloud2`) |
+| depth image + camera info | `/perception/depth/obstacle_points` (`sensor_msgs/msg/PointCloud2`, marking) |
+| depth image + camera info | `/perception/depth/clearing_points` (`sensor_msgs/msg/PointCloud2`, clearing) |
 
 ROI pixel을 3차원으로 역투영하고 카메라 pitch/offset을 적용해 `base_link`의
-`x,y,z float32` point cloud로 만듭니다. 기본 0.04~0.30 m 높이만 남겨 Nav2
-costmap의 depth obstacle source로 사용합니다.
+`x,y,z float32` obstacle cloud로 만듭니다. 기본 0.10~0.30 m 높이만 남겨
+Nav2 costmap marking에 사용합니다.
 
-현재 실제 Nav2 설정에서는 이 topic이 local costmap의 `depth_cloud`
-observation source로 활성화되어 있습니다. global costmap에는 전방 LiDAR
-scan만 들어갑니다.
+같은 유효 ROI depth를 카메라 optical 좌표 `(x=오른쪽, y=아래, z=전방)`로도
+만들어 clearing cloud로 발행합니다. 실제 Nav2 local costmap은 obstacle cloud를
+`depth_mark`, clearing cloud를 `depth_clear` source로 사용합니다. global
+costmap에는 전방 LiDAR scan만 들어갑니다.
 
 현재 cloud 구현은 ROI, 거리, 높이, sampling 필터까지만 적용합니다. 작은 cluster
 제거, 여러 frame 연속 확인, confidence 계산은 아직 없으므로 실제 주행 전 camera
 높이/pitch를 실측하고 빈 바닥에서 오검출 여부를 확인해야 합니다.
+
+카메라 장착값은 2026-06-03 URDF를 기준으로 detector와 cloud 모두
+`x=0.1847 m`, `height=0.1889 m`, `pitch=55°`를 사용합니다. 현재 계산은 이
+55°를 수평 기준 optical axis 하향각으로 해석하므로, 실제 장착각의 측정 기준이
+수직 기준이었다면 평평한 바닥 검증 후 보각으로 수정해야 합니다.
 
 ### `obstacle_fusion_node`
 
@@ -133,10 +140,11 @@ fresh한 local path를 `base_link`로 변환하고, LiDAR point를 cluster로 �
 closing speed/TTC를 계산합니다.
 
 - 동적 장애물 또는 TTC 위험: `stop`
-- 경로 위 정적 LiDAR 장애물: `avoid`
+- 경로 위 정적 LiDAR 장애물: costmap에 맡기고 `run`
 - depth 높이 0.04 m 미만 또는 유효하지 않음: `run`
-- depth 높이 0.04~0.10 m: 동적/TTC 위험이 아니면 `overcome`
-- depth 높이 0.10 m 초과: 동적/TTC 위험이 아니면 `avoid`
+- depth 높이 0.04 m 이상 0.10 m 미만: 동적/TTC 위험이 아니면 `overcome`;
+  costmap에서는 제외
+- depth 높이 0.10 m 이상: costmap에 맡기고 `run`
 - 장애물이 없으면: `run`
 
 stop chatter를 줄이기 위해 기본 0.8초 최소 유지와 2초 clear 확인 latch를
@@ -172,24 +180,33 @@ Nav2 costmap과 `perception_behavior_gate_node`는 이 fused topic을 사용하�
 ## Nav2 costmap 연결
 
 실제 로봇 설정 `helper_navigation/config/helper_nav2_params.yaml`의 local
-`VoxelLayer`는 다음 두 입력을 사용합니다.
+`VoxelLayer`는 다음 세 입력을 사용합니다.
 
 ```text
-observation_sources: scan depth_cloud
+observation_sources: scan depth_mark depth_clear
 
 scan:
   /perception/scan/filtered
   sensor_msgs/msg/LaserScan
 
-depth_cloud:
+depth_mark:
   /perception/depth/obstacle_points
   sensor_msgs/msg/PointCloud2
-  높이 0.04~0.30 m
+  높이 0.10~0.30 m
   marking=true, clearing=false
+
+depth_clear:
+  /perception/depth/clearing_points
+  sensor_msgs/msg/PointCloud2
+  frame=CameraInfo.header.frame_id (일반적으로 camera_depth_optical_frame)
+  marking=false, clearing=true
+  raytrace=0.2~2.0 m
 ```
 
-Depth cloud는 현재 장애물 marking만 하며 자체 raytracing clearing은 하지
-않습니다. 처음에는 RViz와 local costmap에서 point 위치와 잔류 여부를 확인한 뒤
+`base_link -> depth_camera_link -> camera_link`는 URDF가 제공하고,
+`camera_link -> camera_depth_optical_frame`은 depth camera driver TF를
+사용합니다. 이 TF가 없으면 clearing source가 costmap에 반영되지 않습니다.
+처음에는 RViz에서 두 cloud 좌표와 장애물 제거 후 잔류 여부를 확인한 뒤
 실주행해야 합니다.
 
 ## 확인 명령
@@ -199,6 +216,7 @@ ros2 topic echo /perception/scan/filtered --once
 ros2 topic echo /perception/obstacle/range
 ros2 topic echo /perception/obstacle/depth
 ros2 topic echo /perception/depth/obstacle_points --once
+ros2 topic echo /perception/depth/clearing_points --once
 ros2 topic echo /perception/obstacle/fused
 ros2 topic echo /planning/behavior_cmd
 ```

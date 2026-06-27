@@ -74,10 +74,11 @@ ros2 launch helper_perception perception_behavior_gate.launch.py
 `perception_behavior_gate`의 기본 path 입력은 설정 파일 기준 `/local_plan`입니다.
 실행 중 실제 Nav2가 해당 topic을 발행하는지 반드시 확인하십시오.
 
-`depth_obstacle.launch.py`가 발행하는
-`/perception/depth/obstacle_points`(`sensor_msgs/msg/PointCloud2`)는 실제
-Nav2 설정의 local costmap `depth_cloud` source로 연결되어 있습니다. Depth
-launch를 실행하지 않으면 이 source에는 데이터가 없고 LiDAR scan만 사용됩니다.
+`depth_obstacle.launch.py`는 두 `sensor_msgs/msg/PointCloud2`를 발행합니다.
+`/perception/depth/obstacle_points`는 local costmap의 `depth_mark`,
+`/perception/depth/clearing_points`는 `depth_clear` source로 연결됩니다.
+Depth launch를 실행하지 않으면 두 source에는 데이터가 없고 LiDAR scan만
+사용됩니다.
 
 ## 전체 데이터 흐름
 
@@ -159,6 +160,7 @@ local planner가 회피 속도를 계산하고, 기본 Nav2 BT
 | `/control/odom` | `nav_msgs/msg/Odometry` | 로봇 odometry |
 | `/perception/scan/filtered` | `sensor_msgs/msg/LaserScan` | SLAM/Nav2 obstacle source |
 | `/perception/depth/obstacle_points` | `sensor_msgs/msg/PointCloud2` | local costmap의 낮은 장애물 source |
+| `/perception/depth/clearing_points` | `sensor_msgs/msg/PointCloud2` | local costmap의 Depth free-space raytracing |
 | `/map` | `nav_msgs/msg/OccupancyGrid` | SLAM 또는 map server 지도 |
 
 ## Behavior 수동 테스트
@@ -195,9 +197,14 @@ DDS discovery로 첫 메시지가 유실될 수 있어 테스트에서는 `--tim
 - `helper_slam_params.yaml`: SLAM Toolbox와 scan topic 설정
 - `maps/*.yaml`, `maps/*.pgm`: 저장 지도
 
-실제 local costmap은 `scan depth_cloud`를 observation source로 사용합니다.
-Depth cloud는 높이 0.04~0.30 m point를 marking하며 clearing은 비활성입니다.
-global costmap은 현재 전방 LiDAR `scan`만 사용합니다.
+실제 local costmap은 `scan depth_mark depth_clear`를 observation source로
+사용합니다. `depth_mark`는 높이 0.10~0.30 m point를 marking하고,
+`depth_clear`는 CameraInfo가 제공하는 optical frame의 유효 depth point로
+0.2~2.0 m free space를 raytracing합니다.
+0.04 m 이상 0.10 m 미만의 낮은 물체는 costmap에서 제외하고 perception이
+`overcome`으로 처리합니다. 정적 장애물은 별도 `avoid` 명령 없이 `run`을
+유지한 상태에서 Nav2가 회피합니다. global costmap은 현재 전방 LiDAR `scan`만
+사용합니다.
 
 ## 점검 순서
 

@@ -38,7 +38,7 @@ class PerceptionBehaviorGateNode(Node):
         self.declare_parameter('tracking_frame', 'odom')
         self.declare_parameter('path_timeout_sec', 1.0)
         self.declare_parameter('scan_timeout_sec', 0.5)
-        self.declare_parameter('path_lookahead_m', 2.0) # 주행경로 기준 전방 2m
+        self.declare_parameter('path_lookahead_m', 2.0)  # 주행경로 기준 전방 2m
         self.declare_parameter('path_obstacle_width_m', 0.50)  # 주행경로 반경 0.50m
         self.declare_parameter('immediate_obstacle_range_m', 0.0)
         self.declare_parameter('immediate_obstacle_width_m', 0.30)
@@ -230,7 +230,7 @@ class PerceptionBehaviorGateNode(Node):
             else:
                 self.dynamic_stop_latched = False
                 self.dynamic_obstacle = False
-                raw_behavior = 'avoid'
+                raw_behavior = 'run'
                 latch_stop = self.depth_dynamic_stop_active
         else:
             self.tracked_obstacle = None
@@ -301,14 +301,14 @@ class PerceptionBehaviorGateNode(Node):
         overcome_threshold = float(
             self.get_parameter('depth_overcome_height_m').value
         )
-        if height <= overcome_threshold:
+        if height < overcome_threshold:
             self.overcome_active = True
             self.overcome_clear_start_time = None
             return 'overcome'
 
         self.overcome_active = False
         self.overcome_clear_start_time = None
-        return 'avoid'
+        return 'run'
 
     def overcome_clear_behavior(self, now):
         if not self.overcome_active:

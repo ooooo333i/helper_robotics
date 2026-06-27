@@ -13,8 +13,8 @@ depth_obstacle_detector_node:
     max_valid_depth: 3.0
     depth_unit_scale: 0.001
     distance_percentile: 10.0
-    camera_height_m: 0.272
-    camera_pitch_deg: 36.0
+    camera_height_m: 0.1889
+    camera_pitch_deg: 55.0
     height_depth_window_m: 0.02
 
 depth_obstacle_cloud_node:
@@ -22,6 +22,7 @@ depth_obstacle_cloud_node:
     input_depth_topic: /camera/camera/depth/image_rect_raw
     input_camera_info_topic: /camera/camera/depth/camera_info
     output_points_topic: /perception/depth/obstacle_points
+    output_clearing_points_topic: /perception/depth/clearing_points
     output_frame: base_link
     roi_x_min_ratio: 0.35
     roi_x_max_ratio: 0.65
@@ -30,10 +31,11 @@ depth_obstacle_cloud_node:
     min_valid_depth: 0.2
     max_valid_depth: 2.0
     depth_unit_scale: 0.001
-    min_obstacle_height_m: 0.04
+    # Objects below 0.10 m are handled as traversable "overcome" targets.
+    min_obstacle_height_m: 0.10
     max_obstacle_height_m: 0.30
-    camera_height_m: 0.272
-    camera_pitch_deg: 36.0
+    camera_height_m: 0.1889
+    camera_pitch_deg: 55.0
     camera_x_offset_m: 0.1847
     sample_step: 4
     max_points: 3000
