@@ -88,6 +88,14 @@ ROI pixel을 3차원으로 역투영하고 카메라 pitch/offset을 적용해 `
 `x,y,z float32` point cloud로 만듭니다. 기본 0.04~0.30 m 높이만 남겨 Nav2
 costmap의 depth obstacle source로 사용합니다.
 
+현재 실제 Nav2 설정에서는 이 topic이 local costmap의 `depth_cloud`
+observation source로 활성화되어 있습니다. global costmap에는 전방 LiDAR
+scan만 들어갑니다.
+
+현재 cloud 구현은 ROI, 거리, 높이, sampling 필터까지만 적용합니다. 작은 cluster
+제거, 여러 frame 연속 확인, confidence 계산은 아직 없으므로 실제 주행 전 camera
+높이/pitch를 실측하고 빈 바닥에서 오검출 여부를 확인해야 합니다.
+
 ### `obstacle_fusion_node`
 
 | 입력 | 출력 |
@@ -126,11 +134,19 @@ closing speed/TTC를 계산합니다.
 
 - 동적 장애물 또는 TTC 위험: `stop`
 - 경로 위 정적 LiDAR 장애물: `avoid`
-- 일정 높이 이상의 depth 장애물: 동적/TTC 위험이면 `stop`, 아니면 `avoid`
+- depth 높이 0.04 m 미만 또는 유효하지 않음: `run`
+- depth 높이 0.04~0.10 m: 동적/TTC 위험이 아니면 `overcome`
+- depth 높이 0.10 m 초과: 동적/TTC 위험이 아니면 `avoid`
 - 장애물이 없으면: `run`
 
 stop chatter를 줄이기 위해 기본 0.8초 최소 유지와 2초 clear 확인 latch를
-사용합니다. path가 stale이면 behavior 명령을 발행하지 않습니다.
+사용합니다. `overcome`은 장애물이 사라진 뒤에도 기본 3초 유지됩니다. path가
+stale이면 behavior 명령을 발행하지 않습니다.
+
+`/perception/obstacle/fused`는 LiDAR/depth의 단순 상태 결합 결과입니다. 현재
+Nav2 costmap과 `perception_behavior_gate_node`는 이 fused topic을 사용하지
+않습니다. 기본 motor launch도 obstacle safety를 비활성화하므로 fused 결과가
+기본 주행을 직접 정지시키지는 않습니다.
 
 ## Launch 구성
 
@@ -153,12 +169,36 @@ stop chatter를 줄이기 위해 기본 0.8초 최소 유지와 2초 clear 확�
 - `config/action.yaml`: `stop/turn/go` 거리
 - `config/behavior_gate.yaml`: 경로 폭, TTC, 동적 판단, stop latch
 
+## Nav2 costmap 연결
+
+실제 로봇 설정 `helper_navigation/config/helper_nav2_params.yaml`의 local
+`VoxelLayer`는 다음 두 입력을 사용합니다.
+
+```text
+observation_sources: scan depth_cloud
+
+scan:
+  /perception/scan/filtered
+  sensor_msgs/msg/LaserScan
+
+depth_cloud:
+  /perception/depth/obstacle_points
+  sensor_msgs/msg/PointCloud2
+  높이 0.04~0.30 m
+  marking=true, clearing=false
+```
+
+Depth cloud는 현재 장애물 marking만 하며 자체 raytracing clearing은 하지
+않습니다. 처음에는 RViz와 local costmap에서 point 위치와 잔류 여부를 확인한 뒤
+실주행해야 합니다.
+
 ## 확인 명령
 
 ```bash
 ros2 topic echo /perception/scan/filtered --once
 ros2 topic echo /perception/obstacle/range
 ros2 topic echo /perception/obstacle/depth
+ros2 topic echo /perception/depth/obstacle_points --once
 ros2 topic echo /perception/obstacle/fused
 ros2 topic echo /planning/behavior_cmd
 ```

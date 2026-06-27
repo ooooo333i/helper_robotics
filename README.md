@@ -47,6 +47,16 @@ Path  ─┘                         │
                                 /control/odom + TF
 ```
 
+Depth는 behavior 판단과 별개로 낮은 장애물 point cloud를 local costmap에도
+전달합니다.
+
+```text
+Depth Image + CameraInfo
+  -> depth_obstacle_cloud_node
+  -> /perception/depth/obstacle_points (PointCloud2)
+  -> Nav2 local costmap VoxelLayer
+```
+
 TF는 아래 주체가 나누어 만듭니다.
 
 ```text
@@ -298,6 +308,14 @@ ros2 launch helper_perception perception_behavior_gate.launch.py
 ros2 topic info /local_plan -v
 ```
 
+`depth_obstacle.launch.py`는 장애물 판단과 함께 PointCloud2를 발행합니다. 실제
+Nav2 local costmap은 이 topic을 `depth_cloud` source로 사용하므로 다음도
+확인합니다.
+
+```bash
+ros2 topic echo /perception/depth/obstacle_points --once
+```
+
 ### VDA5050 관제 입력을 함께 쓸 때
 
 ```bash
@@ -315,6 +333,7 @@ MQTT order가 `/planning/goal_pose`, instant action이
 |---|---|---|
 | `/perception/scan/filtered` | `sensor_msgs/msg/LaserScan` | LiDAR filter → SLAM/Nav2/behavior gate |
 | `/perception/obstacle/depth` | `helper_msgs/msg/ObstacleDecision` | depth detector → fusion/behavior gate |
+| `/perception/depth/obstacle_points` | `sensor_msgs/msg/PointCloud2` | depth cloud → Nav2 local costmap |
 | `/planning/goal_pose` | `geometry_msgs/msg/PoseStamped` | RViz/VDA5050 → behavior manager |
 | `/planning/behavior_cmd` | `std_msgs/msg/String` | perception/VDA5050 → behavior manager |
 | `/planning/behavior_state` | `std_msgs/msg/String` | behavior manager → safety gate/VDA5050 |
@@ -332,9 +351,14 @@ MQTT order가 `/planning/goal_pose`, instant action이
 - `helper_status`의 theta, 속도, 배터리, action 일부는 아직 고정값입니다.
 - `helper_vda5050`은 전체 표준이 아닌 order/instant action/state 최소 subset입니다.
 - behavior manager의 현재 `avoid`는 costmap clear/replan 함수를 호출하지 않고
-  현재 goal을 유지합니다.
+  현재 goal을 유지합니다. 회피와 주기적 경로 재생성은 Nav2의 DWB와 기본 BT가
+  담당합니다.
 - depth camera driver는 helper launch에 포함되지 않아 별도로 실행해야 합니다.
 - `perception_behavior_gate`는 fresh local path가 없으면 behavior를 발행하지 않습니다.
+- Depth cloud는 local costmap에 활성화되어 있지만 현재 ROI/거리/높이/sampling
+  필터만 있고 cluster·여러 frame 확인·confidence 로직은 없습니다.
+- Depth cloud는 높이 0.04~0.30 m point를 marking하며 clearing은 비활성입니다.
+  camera 높이/pitch와 false marking을 RViz에서 검증한 뒤 실주행해야 합니다.
 
 ## 테스트
 

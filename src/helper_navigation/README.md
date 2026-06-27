@@ -74,6 +74,11 @@ ros2 launch helper_perception perception_behavior_gate.launch.py
 `perception_behavior_gate`의 기본 path 입력은 설정 파일 기준 `/local_plan`입니다.
 실행 중 실제 Nav2가 해당 topic을 발행하는지 반드시 확인하십시오.
 
+`depth_obstacle.launch.py`가 발행하는
+`/perception/depth/obstacle_points`(`sensor_msgs/msg/PointCloud2`)는 실제
+Nav2 설정의 local costmap `depth_cloud` source로 연결되어 있습니다. Depth
+launch를 실행하지 않으면 이 source에는 데이터가 없고 LiDAR scan만 사용됩니다.
+
 ## 전체 데이터 흐름
 
 ```text
@@ -127,7 +132,10 @@ base_link -> sensor frames  robot_state_publisher + URDF
 
 코드에는 costmap clear와 goal restart 함수가 있지만 현재 `handle_avoid()`에서는
 호출하지 않습니다. 즉, 현재 `avoid`가 즉시 costmap clear/replan을 수행한다고
-가정하면 안 됩니다.
+가정하면 안 됩니다. 대신 LiDAR/Depth 장애물이 costmap에 표시된 상태에서 DWB
+local planner가 회피 속도를 계산하고, 기본 Nav2 BT
+`navigate_to_pose_w_replanning_and_recovery.xml`이 global path를 주기적으로
+재계산합니다.
 
 ### `demo_cmd_vel_odom`
 
@@ -150,6 +158,7 @@ base_link -> sensor frames  robot_state_publisher + URDF
 | `/control/cmd_vel_safe` | `geometry_msgs/msg/Twist` | safety gate 이후 최종 속도 |
 | `/control/odom` | `nav_msgs/msg/Odometry` | 로봇 odometry |
 | `/perception/scan/filtered` | `sensor_msgs/msg/LaserScan` | SLAM/Nav2 obstacle source |
+| `/perception/depth/obstacle_points` | `sensor_msgs/msg/PointCloud2` | local costmap의 낮은 장애물 source |
 | `/map` | `nav_msgs/msg/OccupancyGrid` | SLAM 또는 map server 지도 |
 
 ## Behavior 수동 테스트
@@ -186,6 +195,10 @@ DDS discovery로 첫 메시지가 유실될 수 있어 테스트에서는 `--tim
 - `helper_slam_params.yaml`: SLAM Toolbox와 scan topic 설정
 - `maps/*.yaml`, `maps/*.pgm`: 저장 지도
 
+실제 local costmap은 `scan depth_cloud`를 observation source로 사용합니다.
+Depth cloud는 높이 0.04~0.30 m point를 marking하며 clearing은 비활성입니다.
+global costmap은 현재 전방 LiDAR `scan`만 사용합니다.
+
 ## 점검 순서
 
 ```bash
@@ -195,4 +208,4 @@ ros2 run tf2_ros tf2_echo odom base_link
 ros2 run tf2_ros tf2_echo base_link laser_front
 ros2 run tf2_ros tf2_echo map odom
 ros2 action list | grep navigate_to_pose
-'''
+```
