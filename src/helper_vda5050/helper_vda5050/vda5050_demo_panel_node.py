@@ -246,15 +246,22 @@ class VDA5050DemoPanelNode(Node):
         negate = int(metadata.get('negate', 0))
 
         cells = []
-        for value in pgm['pixels']:
-            normalized = value / 255.0
-            occupancy = 1.0 - normalized if not negate else normalized
-            if occupancy >= occupied_thresh:
-                cells.append(100)
-            elif occupancy <= free_thresh:
-                cells.append(0)
-            else:
-                cells.append(-1)
+        width = pgm['width']
+        height = pgm['height']
+        # ROS maps use row 0 as the bottom of the map, while PGM files store
+        # row 0 at the top of the image.
+        for map_row in range(height):
+            image_row = height - 1 - map_row
+            for col in range(width):
+                value = pgm['pixels'][image_row * width + col]
+                normalized = value / 255.0
+                occupancy = 1.0 - normalized if not negate else normalized
+                if occupancy >= occupied_thresh:
+                    cells.append(100)
+                elif occupancy <= free_thresh:
+                    cells.append(0)
+                else:
+                    cells.append(-1)
 
         return {
             'ok': True,
