@@ -1,96 +1,62 @@
 # Helper Robotics
 
-Helper Robotics is a ROS 2 workspace for an indoor mobile robot. It includes
-LiDAR and depth-camera perception, SLAM and Nav2 navigation, behavior control,
-an MD200T motor driver, and a minimal VDA5050 MQTT adapter.
+실내 자율주행 로봇용 ROS 2 워크스페이스입니다. LiDAR/depth 장애물 인식,
+SLAM·Nav2 주행, 속도 안전 제어, MD200T 모터 구동, VDA5050 MQTT 연동을
+포함합니다.
 
-**Target environment:** Ubuntu 22.04, ROS 2 Humble, Python 3.10
+- 기준 환경: Ubuntu 22.04, ROS 2 Humble, Python 3.10
+- 패키지별 상세 실행법: 각 `src/<package>/README.md` 참고
 
-## Packages
+## 전체 흐름
 
-| Package | Purpose |
-|---|---|
-| `helper_msgs` | Custom ROS 2 messages |
-| `helper_description` | Robot URDF and sensor transforms |
-| `helper_perception` | LiDAR/depth processing and obstacle decisions |
-| `helper_navigation` | SLAM, localization, Nav2, and behavior management |
-| `helper_control` | Velocity safety gate and MD200T motor control |
-| `helper_status` | Robot-status publisher |
-| `helper_vda5050` | VDA5050-to-ROS 2 MQTT adapter |
-| `helper_cmd_vel_test` | Motor and safety-gate test publishers |
+```text
+LiDAR / Depth Camera
+        ↓
+helper_perception ──→ obstacle / behavior command
+        ↓                         ↓
+SLAM 또는 AMCL + Nav2 ──→ helper_navigation
+                                  ↓ cmd_vel
+                          helper_control safety gate
+                                  ↓
+                            MD200T motor driver
 
-## Installation
+VDA5050 MQTT order ──→ helper_vda5050 ──→ navigation goal
+```
 
-Install ROS 2 Humble Desktop first, then install the workspace tools:
+## 설치 및 빌드
 
 ```bash
 sudo apt update
-sudo apt install -y \
-  python3-colcon-common-extensions \
-  python3-rosdep \
-  python3-vcstool
+sudo apt install -y python3-colcon-common-extensions python3-rosdep python3-vcstool
 
-sudo rosdep init
-rosdep update
-```
-
-`sudo rosdep init` is only required once per machine.
-
-Clone the workspace and import the external LiDAR driver:
-
-```bash
-mkdir -p ~/workspace
-cd ~/workspace
-git clone https://github.com/ooooo333i/helper_robotics.git
-cd helper_robotics
+cd ~/workspace/helper_robotics
 vcs import src < dependencies.repos
-```
-
-Install dependencies and build:
-
-```bash
 source /opt/ros/humble/setup.bash
 rosdep install --from-paths src --ignore-src --rosdistro humble -r -y
 colcon build --symlink-install
 source install/setup.bash
 ```
 
-Source ROS 2 and the workspace in every new terminal:
+새 터미널마다 다음 환경을 불러옵니다.
 
 ```bash
 source /opt/ros/humble/setup.bash
 source ~/workspace/helper_robotics/install/setup.bash
 ```
 
-## Run Modes
+## 실행
 
-### 1. Software-Only Navigation Demo
-
-This demo uses fake scan and odometry data. It does not require sensors,
-motors, or a physics simulator.
+### 장치 없는 Nav2 데모
 
 ```bash
 ros2 launch helper_navigation behavior_nav2_demo.launch.py rviz:=true
 ```
 
-In RViz, use **2D Goal Pose** to send a navigation goal.
+RViz에서 `2D Goal Pose`로 목표를 지정합니다.
 
-Behavior commands can be tested from another terminal:
+### 실제 로봇 SLAM
 
-```bash
-ros2 topic pub --times 3 /planning/behavior_cmd \
-  std_msgs/msg/String "{data: stop}"
-
-ros2 topic pub --times 3 /planning/behavior_cmd \
-  std_msgs/msg/String "{data: run}"
-```
-
-### 2. Real-Robot Operation
-
-> Test with the drive wheels lifted first and keep an emergency-stop method
-> available.
-
-Configure the connected USB devices:
+처음에는 바퀴를 띄우고 비상 정지 수단을 준비하십시오.
 
 ```bash
 cd ~/workspace/helper_robotics
@@ -98,94 +64,60 @@ cd ~/workspace/helper_robotics
 ./scripts/usb_port_setup.sh configure
 source config/usb_ports.env
 ./scripts/usb_port_setup.sh check
+
+ros2 launch helper_navigation slam_bringup.launch.py motor:=true rviz:=true
 ```
 
-If serial access is denied, add the current user to `dialout` and log in again:
-
-```bash
-sudo usermod -aG dialout "$USER"
-```
-
-#### SLAM and Map Saving
-
-Validate LiDAR and SLAM without motor output:
-
-```bash
-ros2 launch helper_navigation slam_bringup.launch.py \
-  motor:=false \
-  rviz:=true
-```
-
-Enable the motor after validation:
-
-```bash
-ros2 launch helper_navigation slam_bringup.launch.py \
-  motor:=true \
-  rviz:=true
-```
-
-Save the map:
+지도 저장:
 
 ```bash
 ros2 run nav2_map_server map_saver_cli -f \
   ~/workspace/helper_robotics/src/helper_navigation/maps/helper_map
 ```
 
-#### Navigation on a Saved Map
+### 저장 지도 자율주행
 
 ```bash
 source ~/workspace/helper_robotics/config/usb_ports.env
-
 ros2 launch helper_navigation map_navigation.launch.py \
   map:=$HOME/workspace/helper_robotics/src/helper_navigation/maps/helper_map.yaml \
-  front_lidar_port:=${AMR_FRONT_LIDAR_PORT} \
-  motor_port:=${AMR_MOTOR_DRIVER_PORT} \
-  motor:=true \
-  rviz:=true
+  motor:=true rviz:=true
 ```
 
-In RViz, set the initial position with **2D Pose Estimate**, then send a goal
-with **2D Goal Pose**.
-
-Run depth-camera perception and automatic behavior decisions in two additional
-terminals:
+RViz에서 `2D Pose Estimate`로 초기 위치를 설정하고 `2D Goal Pose`를 보냅니다.
+Depth 장애물 인식을 함께 사용할 때는 별도 터미널에서 실행합니다.
 
 ```bash
 ros2 launch helper_perception depth_obstacle.launch.py
-```
-
-```bash
 ros2 launch helper_perception perception_behavior_gate.launch.py
 ```
 
-### 3. Virtual VDA5050 Demo
-
-Install and start the local MQTT broker:
+### VDA5050 가상 데모
 
 ```bash
-sudo apt install -y mosquitto mosquitto-clients
+sudo apt install -y mosquitto mosquitto-clients python3-paho-mqtt
 sudo systemctl enable --now mosquitto
 ```
 
-Terminal 1 — software-only navigation:
+각 명령을 별도 터미널에서 실행합니다.
 
 ```bash
 ros2 launch helper_navigation behavior_nav2_demo.launch.py rviz:=true
+ros2 launch helper_vda5050 vda5050_adapter.launch.py broker_host:=localhost
+ros2 launch helper_vda5050 vda5050_demo_panel.launch.py broker_host:=localhost
 ```
 
-Terminal 2 — VDA5050 adapter:
+브라우저에서 <http://127.0.0.1:8088>을 엽니다.
 
-```bash
-ros2 launch helper_vda5050 vda5050_adapter.launch.py \
-  broker_host:=localhost
-```
+## 패키지
 
-Terminal 3 — browser demo panel:
-
-```bash
-ros2 launch helper_vda5050 vda5050_demo_panel.launch.py \
-  broker_host:=localhost
-```
-
-Open <http://127.0.0.1:8088> to send navigation orders and instant actions.
-
+| 패키지 | 역할 |
+|---|---|
+| `helper_msgs` | 공통 custom message |
+| `helper_description` | URDF와 센서 TF |
+| `helper_perception` | LiDAR/depth 처리와 장애물 판단 |
+| `helper_navigation` | SLAM, AMCL, Nav2, behavior 관리 |
+| `helper_control` | 속도 안전 처리와 모터 구동 |
+| `helper_status` | 로봇 상태 발행 |
+| `helper_vda5050` | MQTT VDA5050 adapter와 demo panel |
+| `helper_cmd_vel_test` | 모터·장애물 제어 테스트 명령 |
