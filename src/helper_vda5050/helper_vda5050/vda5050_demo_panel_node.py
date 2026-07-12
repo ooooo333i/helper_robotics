@@ -8,6 +8,7 @@ from http.server import ThreadingHTTPServer
 from pathlib import Path
 
 import rclpy
+from geometry_msgs.msg import PoseWithCovarianceStamped
 from rclpy.node import Node
 
 try:
@@ -32,6 +33,7 @@ class VDA5050DemoPanelNode(Node):
         self.declare_parameter('http_port', 8088)
         self.declare_parameter('default_map_id', 'map')
         self.declare_parameter('map_yaml', '')
+        self.declare_parameter('initial_pose_topic', '/initialpose')
 
         self.interface_name = self.get_parameter('interface_name').value
         self.major_version = self.get_parameter('major_version').value
@@ -47,6 +49,11 @@ class VDA5050DemoPanelNode(Node):
             self.get_parameter('map_yaml').value
         )
         self.lock = threading.Lock()
+        self.initial_pose_pub = self.create_publisher(
+            PoseWithCovarianceStamped,
+            self.get_parameter('initial_pose_topic').value,
+            10,
+        )
 
         self.connect_mqtt()
         self.start_http_server()
@@ -141,6 +148,9 @@ class VDA5050DemoPanelNode(Node):
                 if self.path == '/api/order':
                     response = node.publish_order(body)
                     self.send_json(response)
+                elif self.path == '/api/initial_pose':
+                    response = node.publish_initial_pose(body)
+                    self.send_json(response)
                 elif self.path == '/api/instant_action':
                     response = node.publish_instant_action(body)
                     self.send_json(response)
@@ -210,6 +220,39 @@ class VDA5050DemoPanelNode(Node):
             ],
         }
         return self.publish_mqtt('order', order)
+
+    def publish_initial_pose(self, body):
+        x = float(body.get('x', 0.0))
+        y = float(body.get('y', 0.0))
+        theta = float(body.get('theta', 0.0))
+        map_id = str(body.get('mapId') or self.default_map_id)
+
+        msg = PoseWithCovarianceStamped()
+        msg.header.stamp = self.get_clock().now().to_msg()
+        msg.header.frame_id = map_id
+        msg.pose.pose.position.x = x
+        msg.pose.pose.position.y = y
+        msg.pose.pose.orientation.z = math.sin(theta / 2.0)
+        msg.pose.pose.orientation.w = math.cos(theta / 2.0)
+        msg.pose.covariance[0] = 0.25
+        msg.pose.covariance[7] = 0.25
+        msg.pose.covariance[35] = 0.0685
+
+        self.initial_pose_pub.publish(msg)
+        self.get_logger().info(
+            'published initial pose '
+            f'frame={map_id} x={x:.3f} y={y:.3f} theta={theta:.3f}'
+        )
+        return {
+            'ok': True,
+            'topic': self.get_parameter('initial_pose_topic').value,
+            'pose': {
+                'mapId': map_id,
+                'x': x,
+                'y': y,
+                'theta': theta,
+            },
+        }
 
     def load_map_payload(self, yaml_path):
         if not yaml_path:
@@ -529,7 +572,9 @@ HTML_PAGE = """<!doctype html>
               <input id="mapId" value="map">
             </div>
           </div>
+          <button class="resume" onclick="sendInitialPose()">Set Initial Pose</button>
           <button onclick="sendOrder()">Send Order</button>
+          <div class="status" id="poseStatus"></div>
           <div class="status" id="orderStatus"></div>
         </section>
 
@@ -574,6 +619,18 @@ HTML_PAGE = """<!doctype html>
       document.getElementById('orderStatus').textContent =
         result.ok ? `Published to ${result.topic}` : `Error: ${result.error}`;
       refreshState();
+    }
+
+    async function sendInitialPose() {
+      const payload = {
+        x: Number(document.getElementById('x').value),
+        y: Number(document.getElementById('y').value),
+        theta: Number(document.getElementById('theta').value),
+        mapId: document.getElementById('mapId').value,
+      };
+      const result = await postJson('/api/initial_pose', payload);
+      document.getElementById('poseStatus').textContent =
+        result.ok ? `Published initial pose to ${result.topic}` : `Error: ${result.error}`;
     }
 
     async function sendAction(actionType, blockingType) {
