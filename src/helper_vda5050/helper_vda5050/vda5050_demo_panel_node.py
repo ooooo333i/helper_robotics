@@ -1,9 +1,11 @@
 import json
 import math
+import os
 import threading
 import time
 from http.server import BaseHTTPRequestHandler
 from http.server import ThreadingHTTPServer
+from pathlib import Path
 
 import rclpy
 from rclpy.node import Node
@@ -28,7 +30,8 @@ class VDA5050DemoPanelNode(Node):
         self.declare_parameter('serial_number', 'helper_001')
         self.declare_parameter('http_host', '127.0.0.1')
         self.declare_parameter('http_port', 8088)
-        self.declare_parameter('default_map_id', 'odom')
+        self.declare_parameter('default_map_id', 'map')
+        self.declare_parameter('map_yaml', '')
 
         self.interface_name = self.get_parameter('interface_name').value
         self.major_version = self.get_parameter('major_version').value
@@ -40,6 +43,9 @@ class VDA5050DemoPanelNode(Node):
         self.mqtt_connected = False
         self.latest_state = {}
         self.last_publish = {}
+        self.map_payload = self.load_map_payload(
+            self.get_parameter('map_yaml').value
+        )
         self.lock = threading.Lock()
 
         self.connect_mqtt()
@@ -118,6 +124,8 @@ class VDA5050DemoPanelNode(Node):
                     self.send_html(node.html_page())
                 elif self.path == '/api/state':
                     self.send_json(node.status_payload())
+                elif self.path == '/api/map':
+                    self.send_json(node.map_payload or {'ok': False})
                 else:
                     self.send_error(404)
 
@@ -203,6 +211,117 @@ class VDA5050DemoPanelNode(Node):
         }
         return self.publish_mqtt('order', order)
 
+    def load_map_payload(self, yaml_path):
+        if not yaml_path:
+            return None
+
+        yaml_file = Path(os.path.expanduser(str(yaml_path)))
+        if not yaml_file.exists():
+            self.get_logger().warn(f'map yaml does not exist: {yaml_file}')
+            return {
+                'ok': False,
+                'error': f'map yaml does not exist: {yaml_file}',
+            }
+
+        try:
+            metadata = self.read_simple_yaml(yaml_file)
+            image_path = Path(metadata.get('image', ''))
+            if not image_path.is_absolute():
+                image_path = yaml_file.parent / image_path
+            pgm = self.read_pgm(image_path)
+        except Exception as exc:
+            self.get_logger().warn(f'failed to load map for panel: {exc}')
+            return {'ok': False, 'error': str(exc)}
+
+        origin = metadata.get('origin', [-0.0, -0.0, 0.0])
+        if isinstance(origin, str):
+            origin = [
+                float(value.strip())
+                for value in origin.strip('[]').split(',')
+                if value.strip()
+            ]
+        resolution = float(metadata.get('resolution', 0.05))
+        occupied_thresh = float(metadata.get('occupied_thresh', 0.65))
+        free_thresh = float(metadata.get('free_thresh', 0.25))
+        negate = int(metadata.get('negate', 0))
+
+        cells = []
+        for value in pgm['pixels']:
+            normalized = value / 255.0
+            occupancy = 1.0 - normalized if not negate else normalized
+            if occupancy >= occupied_thresh:
+                cells.append(100)
+            elif occupancy <= free_thresh:
+                cells.append(0)
+            else:
+                cells.append(-1)
+
+        return {
+            'ok': True,
+            'yaml': str(yaml_file),
+            'image': str(image_path),
+            'width': pgm['width'],
+            'height': pgm['height'],
+            'resolution': resolution,
+            'origin': origin,
+            'cells': cells,
+        }
+
+    @staticmethod
+    def read_simple_yaml(path):
+        metadata = {}
+        for raw_line in path.read_text().splitlines():
+            line = raw_line.split('#', 1)[0].strip()
+            if not line or ':' not in line:
+                continue
+            key, value = line.split(':', 1)
+            value = value.strip()
+            if value.startswith('[') and value.endswith(']'):
+                metadata[key.strip()] = [
+                    float(item.strip())
+                    for item in value.strip('[]').split(',')
+                    if item.strip()
+                ]
+            else:
+                metadata[key.strip()] = value
+        return metadata
+
+    @staticmethod
+    def read_pgm(path):
+        with path.open('rb') as stream:
+            tokens = []
+            while len(tokens) < 4:
+                line = stream.readline()
+                if not line:
+                    raise ValueError(f'invalid PGM header: {path}')
+                line = line.split(b'#', 1)[0].strip()
+                if not line:
+                    continue
+                tokens.extend(line.split())
+
+            magic = tokens[0].decode('ascii')
+            width = int(tokens[1])
+            height = int(tokens[2])
+            max_value = int(tokens[3])
+            if max_value <= 0:
+                raise ValueError(f'invalid PGM max value: {max_value}')
+
+            if magic == 'P5':
+                pixel_count = width * height
+                data = stream.read(pixel_count)
+                if len(data) != pixel_count:
+                    raise ValueError(f'PGM pixel data is truncated: {path}')
+                pixels = list(data)
+            elif magic == 'P2':
+                rest = stream.read().decode('ascii').split()
+                pixels = [int(value) for value in rest[:width * height]]
+            else:
+                raise ValueError(f'unsupported PGM type {magic}: {path}')
+
+        if max_value != 255:
+            pixels = [int(round(value * 255.0 / max_value)) for value in pixels]
+        return {'width': width, 'height': height, 'pixels': pixels}
+
     def publish_instant_action(self, body):
         action_type = str(body.get('actionType', 'stop'))
         message = {
@@ -286,7 +405,7 @@ HTML_PAGE = """<!doctype html>
     }
     main {
       margin: 0 auto;
-      max-width: 980px;
+      max-width: 1180px;
       padding: 28px;
     }
     h1 {
@@ -299,6 +418,12 @@ HTML_PAGE = """<!doctype html>
       border-radius: 8px;
       margin: 0 0 16px;
       padding: 18px;
+    }
+    .layout {
+      align-items: start;
+      display: grid;
+      gap: 16px;
+      grid-template-columns: minmax(360px, 1.5fr) minmax(280px, 1fr);
     }
     .grid {
       display: grid;
@@ -336,6 +461,14 @@ HTML_PAGE = """<!doctype html>
     button.resume {
       background: #00875a;
     }
+    canvas {
+      background: #dfe5ec;
+      border: 1px solid #aeb7c2;
+      border-radius: 6px;
+      cursor: crosshair;
+      max-width: 100%;
+      width: 100%;
+    }
     pre {
       background: #172b4d;
       border-radius: 8px;
@@ -350,44 +483,59 @@ HTML_PAGE = """<!doctype html>
       font-size: 14px;
       margin-top: 8px;
     }
+    @media (max-width: 820px) {
+      .layout {
+        grid-template-columns: 1fr;
+      }
+    }
   </style>
 </head>
 <body>
   <main>
     <h1>VDA5050 Demo Panel</h1>
 
-    <section>
-      <h2>Order</h2>
-      <div class="grid">
-        <div>
-          <label for="x">x</label>
-          <input id="x" type="number" step="0.1" value="1.0">
-        </div>
-        <div>
-          <label for="y">y</label>
-          <input id="y" type="number" step="0.1" value="0.0">
-        </div>
-        <div>
-          <label for="theta">theta rad</label>
-          <input id="theta" type="number" step="0.1" value="0.0">
-        </div>
-        <div>
-          <label for="mapId">mapId</label>
-          <input id="mapId" value="odom">
-        </div>
-      </div>
-      <button onclick="sendOrder()">Send Order</button>
-      <div class="status" id="orderStatus"></div>
-    </section>
+    <div class="layout">
+      <section>
+        <h2>Map Goal</h2>
+        <canvas id="mapCanvas" width="640" height="640"></canvas>
+        <div class="status" id="mapStatus">Loading map...</div>
+      </section>
 
-    <section>
-      <h2>Instant Actions</h2>
-      <button class="stop" onclick="sendAction('stop', 'HARD')">Stop</button>
-      <button class="resume" onclick="sendAction('resume', 'NONE')">Resume</button>
-      <button onclick="sendAction('pause', 'HARD')">Pause</button>
-      <button onclick="sendAction('cancelOrder', 'HARD')">Cancel Order</button>
-      <div class="status" id="actionStatus"></div>
-    </section>
+      <div>
+        <section>
+          <h2>Order</h2>
+          <div class="grid">
+            <div>
+              <label for="x">x</label>
+              <input id="x" type="number" step="0.01" value="1.0">
+            </div>
+            <div>
+              <label for="y">y</label>
+              <input id="y" type="number" step="0.01" value="0.0">
+            </div>
+            <div>
+              <label for="theta">theta rad</label>
+              <input id="theta" type="number" step="0.1" value="0.0">
+            </div>
+            <div>
+              <label for="mapId">mapId</label>
+              <input id="mapId" value="map">
+            </div>
+          </div>
+          <button onclick="sendOrder()">Send Order</button>
+          <div class="status" id="orderStatus"></div>
+        </section>
+
+        <section>
+          <h2>Instant Actions</h2>
+          <button class="stop" onclick="sendAction('stop', 'HARD')">Stop</button>
+          <button class="resume" onclick="sendAction('resume', 'NONE')">Resume</button>
+          <button onclick="sendAction('pause', 'HARD')">Pause</button>
+          <button onclick="sendAction('cancelOrder', 'HARD')">Cancel Order</button>
+          <div class="status" id="actionStatus"></div>
+        </section>
+      </div>
+    </div>
 
     <section>
       <h2>MQTT / State</h2>
@@ -396,6 +544,9 @@ HTML_PAGE = """<!doctype html>
   </main>
 
   <script>
+    let mapData = null;
+    let selectedGoal = null;
+
     async function postJson(url, payload) {
       const response = await fetch(url, {
         method: 'POST',
@@ -435,6 +586,83 @@ HTML_PAGE = """<!doctype html>
         JSON.stringify(payload, null, 2);
     }
 
+    async function loadMap() {
+      const response = await fetch('/api/map');
+      const payload = await response.json();
+      if (!payload.ok) {
+        document.getElementById('mapStatus').textContent =
+          payload.error || 'No map loaded. Use x/y inputs directly.';
+        return;
+      }
+      mapData = payload;
+      drawMap();
+      document.getElementById('mapStatus').textContent =
+        `Loaded ${payload.width}x${payload.height}, resolution ${payload.resolution} m/pixel`;
+    }
+
+    function drawMap() {
+      if (!mapData) {
+        return;
+      }
+      const canvas = document.getElementById('mapCanvas');
+      const ctx = canvas.getContext('2d');
+      const width = mapData.width;
+      const height = mapData.height;
+      canvas.width = width;
+      canvas.height = height;
+      const image = ctx.createImageData(width, height);
+
+      for (let row = 0; row < height; row += 1) {
+        for (let col = 0; col < width; col += 1) {
+          const mapIndex = row * width + col;
+          const canvasRow = height - 1 - row;
+          const pixelIndex = (canvasRow * width + col) * 4;
+          const cell = mapData.cells[mapIndex];
+          let shade = 130;
+          if (cell === 0) {
+            shade = 245;
+          } else if (cell === 100) {
+            shade = 25;
+          }
+          image.data[pixelIndex] = shade;
+          image.data[pixelIndex + 1] = shade;
+          image.data[pixelIndex + 2] = shade;
+          image.data[pixelIndex + 3] = 255;
+        }
+      }
+      ctx.putImageData(image, 0, 0);
+
+      if (selectedGoal) {
+        ctx.fillStyle = '#0052cc';
+        ctx.beginPath();
+        ctx.arc(selectedGoal.col, height - 1 - selectedGoal.row, 3, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    function handleMapClick(event) {
+      if (!mapData) {
+        return;
+      }
+      const canvas = document.getElementById('mapCanvas');
+      const rect = canvas.getBoundingClientRect();
+      const col = Math.floor((event.clientX - rect.left) * canvas.width / rect.width);
+      const canvasRow = Math.floor((event.clientY - rect.top) * canvas.height / rect.height);
+      const row = canvas.height - 1 - canvasRow;
+      const origin = mapData.origin;
+      const resolution = mapData.resolution;
+      const x = origin[0] + (col + 0.5) * resolution;
+      const y = origin[1] + (row + 0.5) * resolution;
+      selectedGoal = {row, col};
+      document.getElementById('x').value = x.toFixed(3);
+      document.getElementById('y').value = y.toFixed(3);
+      drawMap();
+      document.getElementById('mapStatus').textContent =
+        `Selected x=${x.toFixed(3)}, y=${y.toFixed(3)}`;
+    }
+
+    document.getElementById('mapCanvas').addEventListener('click', handleMapClick);
+    loadMap();
     refreshState();
     setInterval(refreshState, 1000);
   </script>

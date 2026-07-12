@@ -12,6 +12,7 @@ def generate_launch_description():
         DeclareLaunchArgument('serial_number', default_value='helper_001'),
         DeclareLaunchArgument('http_host', default_value='127.0.0.1'),
         DeclareLaunchArgument('http_port', default_value='8088'),
+        DeclareLaunchArgument('map_yaml', default_value=''),
         Node(
             package='helper_vda5050',
             executable='vda5050_demo_panel',
@@ -24,6 +25,7 @@ def generate_launch_description():
                 'serial_number': LaunchConfiguration('serial_number'),
                 'http_host': LaunchConfiguration('http_host'),
                 'http_port': LaunchConfiguration('http_port'),
+                'map_yaml': LaunchConfiguration('map_yaml'),
             }],
         ),
     ])
