@@ -13,6 +13,7 @@ from launch.actions import IncludeLaunchDescription
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import Command
+from launch.substitutions import EnvironmentVariable
 from launch.substitutions import LaunchConfiguration
 from launch.substitutions import PathJoinSubstitution
 from launch_ros.actions import Node
@@ -27,6 +28,7 @@ def generate_launch_description():
 
     use_sim_time = LaunchConfiguration('use_sim_time')
     use_motor = LaunchConfiguration('motor')
+    motor_port = LaunchConfiguration('motor_port')
     use_rviz = LaunchConfiguration('rviz')
 
     params_file = PathJoinSubstitution([
@@ -71,6 +73,17 @@ def generate_launch_description():
             description='Start motor driver and cmd_vel safety gate.',
         ),
         DeclareLaunchArgument(
+            'motor_port',
+            default_value=EnvironmentVariable(
+                'AMR_MOTOR_DRIVER_PORT',
+                default_value=(
+                    '/dev/serial/by-id/'
+                    'usb-FTDI_FT232R_USB_UART_A50285BI-if00-port0'
+                ),
+            ),
+            description='Serial port for the motor driver.',
+        ),
+        DeclareLaunchArgument(
             'rviz',
             default_value='false',
             description='Start RViz for visual inspection.',
@@ -88,6 +101,9 @@ def generate_launch_description():
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource([motor_launch_file]),
             condition=IfCondition(use_motor),
+            launch_arguments={
+                'serial_port': motor_port,
+            }.items(),
         ),
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource([

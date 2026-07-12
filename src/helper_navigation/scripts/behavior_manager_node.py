@@ -276,6 +276,10 @@ class BehaviorManagerNode(Node):
 
     def handle_avoid(self):
         self.clear_speed_limit()
+        if self.avoid_replan_allowed():
+            self.last_avoid_replan_time = self.get_clock().now()
+            self.restart_current_goal()
+            return
         self.resume_current_goal()
 
     def avoid_replan_allowed(self):
