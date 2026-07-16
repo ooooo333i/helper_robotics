@@ -9,7 +9,7 @@ odometry와 behavior 상태를 MQTT state로 발행합니다.
 sudo apt install -y python3-paho-mqtt mosquitto mosquitto-clients
 sudo systemctl enable --now mosquitto
 
-cd ~/workspace/helper_robotics
+cd ~/helper_robotics
 colcon build --symlink-install --packages-select helper_vda5050
 source install/setup.bash
 ```

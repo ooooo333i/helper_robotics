@@ -8,7 +8,7 @@ Nav2 속도 명령에 behavior/timeout 안전 정지를 적용하고, 차동 구
 ## 빌드
 
 ```bash
-cd ~/workspace/helper_robotics
+cd ~/helper_robotics
 colcon build --symlink-install --packages-select helper_msgs helper_control
 source install/setup.bash
 ```

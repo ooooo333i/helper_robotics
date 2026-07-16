@@ -6,7 +6,7 @@ SLAM, 저장 지도 localization(AMCL), Nav2 자율주행, behavior 기반 정�
 ## 빌드
 
 ```bash
-cd ~/workspace/helper_robotics
+cd ~/helper_robotics
 colcon build --symlink-install --packages-up-to helper_navigation
 source install/setup.bash
 ```
@@ -22,7 +22,7 @@ ros2 launch helper_navigation behavior_nav2_demo.launch.py rviz:=true
 실제 로봇 SLAM:
 
 ```bash
-source ~/workspace/helper_robotics/config/usb_ports.env
+source ~/helper_robotics/config/usb_ports.env
 ros2 launch helper_navigation slam_bringup.launch.py motor:=true rviz:=true
 ```
 
@@ -32,15 +32,15 @@ ros2 launch helper_navigation slam_bringup.launch.py motor:=true rviz:=true
 
 ```bash
 ros2 run nav2_map_server map_saver_cli -f \
-  ~/workspace/helper_robotics/src/helper_navigation/maps/helper_map
+  ~/helper_robotics/src/helper_navigation/maps/helper_map
 ```
 
 저장 지도 자율주행:
 
 ```bash
-source ~/workspace/helper_robotics/config/usb_ports.env
+source ~/helper_robotics/config/usb_ports.env
 ros2 launch helper_navigation map_navigation.launch.py \
-  map:=$HOME/workspace/helper_robotics/src/helper_navigation/maps/helper_maps.yaml \
+  map:=$HOME/helper_robotics/src/helper_navigation/maps/helper_maps.yaml \
   motor:=true rviz:=true
 ```
 

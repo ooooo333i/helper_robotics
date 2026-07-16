@@ -6,7 +6,7 @@
 ## 빌드
 
 ```bash
-cd ~/workspace/helper_robotics
+cd ~/helper_robotics
 colcon build --symlink-install --packages-select helper_msgs helper_cmd_vel_test
 source install/setup.bash
 ```

@@ -6,7 +6,7 @@
 ## 빌드 및 실행
 
 ```bash
-cd ~/workspace/helper_robotics
+cd ~/helper_robotics
 colcon build --symlink-install --packages-select helper_description
 source install/setup.bash
 ros2 launch helper_description display.launch.py

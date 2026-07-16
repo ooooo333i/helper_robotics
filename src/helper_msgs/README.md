@@ -6,7 +6,7 @@ Helper Robotics 패키지 사이에서 공유하는 ROS 2 custom message를 정�
 ## 빌드 및 확인
 
 ```bash
-cd ~/workspace/helper_robotics
+cd ~/helper_robotics
 colcon build --symlink-install --packages-select helper_msgs
 source install/setup.bash
 

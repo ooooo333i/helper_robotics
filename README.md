@@ -1,6 +1,6 @@
 # Helper Robotics
 
-실내 자율주행 AMR용 ROS 2 워크스페이스입니다. LiDAR·Depth 장애물 인식,
+자율주행 AMR용 ROS 2 워크스페이스입니다. LiDAR·Depth 장애물 인식,
 SLAM·Nav2 주행, behavior 기반 속도 제어, MD200T 연동 및 VDA5050 형식의
 MQTT 통신 기능을 제공합니다.
 
@@ -29,7 +29,7 @@ VDA5050 MQTT order ──→ helper_vda5050 ──→ navigation goal
 sudo apt update
 sudo apt install -y python3-colcon-common-extensions python3-rosdep python3-vcstool
 
-cd ~/workspace/helper_robotics
+cd ~/helper_robotics
 vcs import src < dependencies.repos
 source /opt/ros/humble/setup.bash
 rosdep install --from-paths src --ignore-src --rosdistro humble -r -y
@@ -41,7 +41,7 @@ source install/setup.bash
 
 ```bash
 source /opt/ros/humble/setup.bash
-source ~/workspace/helper_robotics/install/setup.bash
+source ~/helper_robotics/install/setup.bash
 ```
 
 ## 실행
@@ -57,7 +57,7 @@ RViz에서 `2D Goal Pose`로 목표를 지정합니다.
 ### 실제 로봇 SLAM
 
 ```bash
-cd ~/workspace/helper_robotics
+cd ~/helper_robotics
 ./scripts/usb_port_setup.sh scan
 ./scripts/usb_port_setup.sh configure
 source config/usb_ports.env
@@ -70,15 +70,15 @@ ros2 launch helper_navigation slam_bringup.launch.py motor:=true rviz:=true
 
 ```bash
 ros2 run nav2_map_server map_saver_cli -f \
-  ~/workspace/helper_robotics/src/helper_navigation/maps/helper_map
+  ~/helper_robotics/src/helper_navigation/maps/helper_map
 ```
 
 ### 저장 지도 자율주행
 
 ```bash
-source ~/workspace/helper_robotics/config/usb_ports.env
+source ~/helper_robotics/config/usb_ports.env
 ros2 launch helper_navigation map_navigation.launch.py \
-  map:=$HOME/workspace/helper_robotics/src/helper_navigation/maps/helper_maps.yaml \
+  map:=$HOME/helper_robotics/src/helper_navigation/maps/helper_maps.yaml \
   motor:=true rviz:=true
 ```
 

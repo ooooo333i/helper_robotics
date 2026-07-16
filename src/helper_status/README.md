@@ -7,7 +7,7 @@
 ## 빌드 및 실행
 
 ```bash
-cd ~/workspace/helper_robotics
+cd ~/helper_robotics
 colcon build --symlink-install --packages-select helper_msgs helper_status
 source install/setup.bash
 ros2 run helper_status status_node
