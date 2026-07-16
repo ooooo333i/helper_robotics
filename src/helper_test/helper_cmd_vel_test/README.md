@@ -1,8 +1,7 @@
 # helper_cmd_vel_test
 
 모터 bringup과 장애물 안전 정지를 확인하는 테스트 publisher 모음입니다.
-기본 출력 `/control/cmd_vel_safe`는 실제 모터가 구독하므로 바퀴를 띄우고 비상
-정지 수단을 준비한 뒤 실행하십시오.
+기본 출력 토픽은 `/control/cmd_vel_safe`입니다.
 
 ## 빌드
 
@@ -36,7 +35,7 @@ ros2 run helper_cmd_vel_test cmd_vel_stop
 ros2 launch helper_cmd_vel_test obstacle_decision_sequence.launch.py
 ```
 
-거리와 회전 테스트는 encoder feedback이 없는 시간 기반 open-loop 테스트입니다.
+거리와 회전 테스트 노드는 설정 속도와 실행 시간을 이용해 시험 명령을 생성합니다.
 
 확인:
 

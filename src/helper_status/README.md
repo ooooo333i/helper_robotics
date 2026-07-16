@@ -1,7 +1,8 @@
 # helper_status
 
 `/control/odom`을 받아 Helper Robotics의 `RobotStatus` 메시지로 변환해
-`/control/status`에 발행합니다. 현재 배터리와 일부 상태 필드는 고정된 데모값입니다.
+`/control/status`에 10 Hz로 발행합니다. odometry의 x, y 위치를 상태 메시지에
+반영하고 로봇 ID, 배터리, 현재 action 및 상태 정보를 함께 제공합니다.
 
 ## 빌드 및 실행
 

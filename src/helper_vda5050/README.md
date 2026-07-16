@@ -1,8 +1,7 @@
 # helper_vda5050
 
 VDA5050 형식의 MQTT order/instant action을 ROS 2 navigation 명령으로 변환하고,
-odometry와 behavior 상태를 MQTT state로 발행합니다. 전체 표준이 아닌 주행 데모용
-최소 subset입니다.
+odometry와 behavior 상태를 MQTT state로 발행합니다.
 
 ## 준비 및 빌드
 
@@ -50,4 +49,18 @@ identity와 broker는 launch 인자로 변경할 수 있습니다.
 ros2 launch helper_vda5050 vda5050_adapter.launch.py \
   broker_host:=192.168.0.10 broker_port:=1883 \
   manufacturer:=helper serial_number:=helper_001
+```
+
+## 지원 메시지
+
+- `order`: 마지막 released node의 `x`, `y`, `theta`, `mapId`를 Nav2 목표점으로 변환
+- `instantActions`: `stop`, `pause`, `cancelOrder`, `start`, `resume` 처리
+- `state`: order ID, 위치·자세, driving, operating mode, behavior 및 safety 상태 발행
+
+MQTT topic은 다음 규칙으로 생성됩니다.
+
+```text
+{interface_name}/{major_version}/{manufacturer}/{serial_number}/order
+{interface_name}/{major_version}/{manufacturer}/{serial_number}/instantActions
+{interface_name}/{major_version}/{manufacturer}/{serial_number}/state
 ```

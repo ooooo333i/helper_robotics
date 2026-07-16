@@ -1,8 +1,9 @@
 # helper_control
 
 Nav2 속도 명령에 behavior/timeout 안전 정지를 적용하고, 차동 구동 RPM으로
-변환해 MD200T 모터 드라이버로 전달합니다. 현재 odometry는 엔코더가 아닌 명령
-RPM 적분값입니다.
+변환해 MD200T 모터 드라이버로 전달합니다. MD200T의 실제 좌·우 RPM feedback을
+우선 사용하여 wheel odometry를 생성하고, feedback timeout 시 명령 RPM을
+이용해 odometry를 계속 발행합니다.
 
 ## 빌드
 
@@ -55,8 +56,9 @@ ros2 run helper_control keyboard_teleop
   -> MD200T + /control/odom + odom→base_link TF
 ```
 
-설정은 `config/motor_driver.yaml`에서 변경합니다. 실제 구동 전에는 바퀴를 띄우고
-비상 정지 수단을 준비하십시오.
+설정은 `config/motor_driver.yaml`에서 변경합니다. 주요 설정 항목은 serial port,
+wheel radius, track width, gear ratio, 속도·RPM 제한, feedback timeout 및 좌·우
+모터 방향/scale입니다.
 
 ```bash
 ros2 topic echo /control/cmd_vel_safe

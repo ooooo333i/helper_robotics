@@ -40,7 +40,7 @@ ros2 run nav2_map_server map_saver_cli -f \
 ```bash
 source ~/workspace/helper_robotics/config/usb_ports.env
 ros2 launch helper_navigation map_navigation.launch.py \
-  map:=$HOME/workspace/helper_robotics/src/helper_navigation/maps/helper_map.yaml \
+  map:=$HOME/workspace/helper_robotics/src/helper_navigation/maps/helper_maps.yaml \
   motor:=true rviz:=true
 ```
 
@@ -71,3 +71,9 @@ ros2 topic echo /control/odom --once
 ros2 run tf2_ros tf2_echo map base_link
 ros2 action list
 ```
+
+주요 설정 파일:
+
+- `config/helper_slam_params.yaml`: SLAM Toolbox 설정
+- `config/helper_nav2_params.yaml`: AMCL, planner, controller, costmap 설정
+- `config/helper_nav2_fake_params.yaml`: 장치 없는 데모용 Nav2 설정

@@ -26,7 +26,7 @@ ros2 launch helper_perception depth_obstacle.launch.py
 # LiDAR/depth 판단 결합
 ros2 launch helper_perception obstacle_fusion.launch.py
 
-# 전체 perception 구성
+# 전방 LiDAR + Depth + Fusion 기본 구성
 ros2 launch helper_perception perception_bringup.launch.py
 
 # 경로 위 장애물을 behavior 명령으로 변환
@@ -52,6 +52,9 @@ path + scan + depth + odom -> /planning/behavior_cmd
 
 설정 파일은 `config/lidar.yaml`, `depth.yaml`, `fusion.yaml`,
 `behavior_gate.yaml`입니다.
+
+Perception Behavior Gate는 Nav2 local plan, filtered scan, Depth 장애물 판단 및
+odometry를 결합해 `run`, `stop`, `overcome` behavior 명령을 생성합니다.
 
 ```bash
 ros2 topic echo /perception/scan/filtered --once

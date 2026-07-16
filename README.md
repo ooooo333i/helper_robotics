@@ -1,8 +1,8 @@
 # Helper Robotics
 
-실내 자율주행 로봇용 ROS 2 워크스페이스입니다. LiDAR/depth 장애물 인식,
-SLAM·Nav2 주행, 속도 안전 제어, MD200T 모터 구동, VDA5050 MQTT 연동을
-포함합니다.
+실내 자율주행 AMR용 ROS 2 워크스페이스입니다. LiDAR·Depth 장애물 인식,
+SLAM·Nav2 주행, behavior 기반 속도 제어, MD200T 연동 및 VDA5050 형식의
+MQTT 통신 기능을 제공합니다.
 
 - 기준 환경: Ubuntu 22.04, ROS 2 Humble, Python 3.10
 - 패키지별 상세 실행법: 각 `src/<package>/README.md` 참고
@@ -56,8 +56,6 @@ RViz에서 `2D Goal Pose`로 목표를 지정합니다.
 
 ### 실제 로봇 SLAM
 
-처음에는 바퀴를 띄우고 비상 정지 수단을 준비하십시오.
-
 ```bash
 cd ~/workspace/helper_robotics
 ./scripts/usb_port_setup.sh scan
@@ -80,7 +78,7 @@ ros2 run nav2_map_server map_saver_cli -f \
 ```bash
 source ~/workspace/helper_robotics/config/usb_ports.env
 ros2 launch helper_navigation map_navigation.launch.py \
-  map:=$HOME/workspace/helper_robotics/src/helper_navigation/maps/helper_map.yaml \
+  map:=$HOME/workspace/helper_robotics/src/helper_navigation/maps/helper_maps.yaml \
   motor:=true rviz:=true
 ```
 
@@ -113,11 +111,11 @@ ros2 launch helper_vda5050 vda5050_demo_panel.launch.py broker_host:=localhost
 
 | 패키지 | 역할 |
 |---|---|
-| `helper_msgs` | 공통 custom message |
+| `helper_msgs` | 공통 custom message 정의 |
 | `helper_description` | URDF와 센서 TF |
 | `helper_perception` | LiDAR/depth 처리와 장애물 판단 |
 | `helper_navigation` | SLAM, AMCL, Nav2, behavior 관리 |
-| `helper_control` | 속도 안전 처리와 모터 구동 |
+| `helper_control` | 속도 안전 처리, MD200T 제어, odometry/TF |
 | `helper_status` | 로봇 상태 발행 |
 | `helper_vda5050` | MQTT VDA5050 adapter와 demo panel |
 | `helper_cmd_vel_test` | 모터·장애물 제어 테스트 명령 |
